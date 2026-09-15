@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: courtflow-playlocal
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python playlocal_server.py
+    healthCheckPath: /
+    envVars:
+      - key: COURTFLOW_ALLOWED_ORIGIN
+        value: https://to-shreds.github.io
