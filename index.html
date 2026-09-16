@@ -1,297 +1,172 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CourtFlow</title><style>
-:root{font-family:Inter,system-ui,sans-serif;color:#15251d;background:#f4f7f5}*{box-sizing:border-box}body{margin:0}.wrap{max-width:1050px;margin:auto;padding:24px}.top{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:20px}.brand{font-size:28px;font-weight:800}.pill{padding:7px 11px;border-radius:999px;background:#e4eee8;font-size:13px}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0}.tabs button,.btn{border:0;border-radius:10px;padding:10px 14px;cursor:pointer;background:#e1e8e4}.tabs button.active,.btn.primary{background:#176c4b;color:#fff}.btn.danger{background:#f8dddd;color:#7a1515}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.card{background:#fff;border:1px solid #dbe4de;border-radius:16px;padding:18px;box-shadow:0 2px 10px #00000008}.card h2{margin:0 0 14px;font-size:18px}label{display:block;font-size:13px;font-weight:700;margin:10px 0 5px}input,select{width:100%;padding:10px;border:1px solid #cdd8d1;border-radius:9px;background:#fff}.row{display:flex;gap:10px;align-items:end}.row>*{flex:1}.small{font-size:12px;color:#64736b}.account,.slot,.planrow{display:flex;align-items:center;justify-content:space-between;gap:10px;border-top:1px solid #edf1ee;padding:10px 0}.account:first-child,.slot:first-child,.planrow:first-child{border-top:0}.muted{color:#718077}.ok{color:#176c4b}.bad{color:#9b2e2e}.notice{padding:10px 12px;border-radius:10px;background:#f0f5f2;margin:10px 0;font-size:13px}.status{white-space:pre-wrap;font-family:ui-monospace,monospace;font-size:12px;background:#0d1712;color:#d4f4e4;padding:12px;border-radius:10px;min-height:75px}.hidden{display:none}@media(max-width:760px){.grid{grid-template-columns:1fr}.row{flex-direction:column;align-items:stretch}.wrap{padding:14px}.top{align-items:flex-start;flex-direction:column}}
-</style></head><body><div class="wrap"><div class="top"><div><div class="brand">CourtFlow</div><div class="small">Multi-account PlayLocal booking concept</div></div><div class="pill" id="mode">Simulation ready</div></div>
-<div class="tabs"><button data-page="search" class="active">Search</button><button data-page="planner">Window planner</button><button data-page="settings">Settings</button><button data-page="bookings">Bookings</button></div>
-<section id="search" class="page"><div class="grid"><div class="card"><h2>Search courts</h2><div class="row"><div><label>Location</label><input id="loc" value="Boston"></div><div><label>Date</label><input id="date" type="date"></div></div><div class="row"><div><label>Start</label><select id="start"></select></div><div><label>End</label><select id="end"></select></div></div><button class="btn primary" id="searchBtn">Search</button><div class="notice">Live mode searches PlayLocal through the configured backend. Simulation remains available for interface testing.</div></div><div class="card"><h2>Availability</h2><div id="results" class="muted">Search to load slots.</div></div></div></section>
-<section id="planner" class="page hidden"><div class="grid"><div class="card"><h2>Build a window</h2><label>Facility</label><select id="facility"></select><div class="row"><div><label>Date</label><input id="pdate" type="date"></div><div><label>Court</label><select id="court"></select><div id="courtNotice" class="small"></div></div></div><div class="row"><div><label>Start</label><select id="pstart"></select></div><div><label>End</label><select id="pend"></select></div></div><label>Per-account allowance</label><select id="limit"><option value="120">2 hours</option><option value="180">3 hours</option><option value="240">4 hours</option></select><button class="btn primary" id="planBtn">Build plan</button></div><div class="card"><h2>Plan</h2><div id="plan" class="muted">No plan yet.</div><button class="btn primary hidden" id="bookPlan">Book planned slots</button><div id="bookingHelp" class="small" style="margin-top:10px"></div></div></div></section>
-<section id="settings" class="page hidden"><div class="grid"><div class="card"><h2>PlayLocal connection</h2><div class="notice"><b>Live backend:</b> courtflow-playlocal.onrender.com</div><button class="btn primary" id="connect">Test live connection</button><button class="btn" id="demo">Use simulation</button><div class="small">The live adapter is built into this version. No backend URL setup is required.</div></div><div class="card"><h2>Accounts</h2><div class="row"><div><label>Name</label><input id="aname" placeholder="Jon"></div><div><label>PlayLocal email</label><input id="aemail" type="email"></div></div><label>Password</label><input id="apass" type="password" autocomplete="current-password"><button class="btn primary" id="addAcct">Add account</button><button class="btn danger" id="clearAccts">Clear saved accounts</button><div id="accounts"></div><div class="small">Accounts, including passwords, are saved in this browser so they survive refreshes and future visits on this device.</div></div></div></section>
-<section id="bookings" class="page hidden"><div class="card"><h2>Bookings</h2><button class="btn primary" id="refreshBookings">Refresh current PlayLocal bookings</button><div class="small" style="margin-top:8px">Loads the current Activity/reservations page separately for each saved account.</div><div id="bookingList" class="muted" style="margin-top:12px">No bookings loaded yet.</div></div></section>
-<div class="card" style="margin-top:16px"><h2>Activity</h2><div class="status" id="log">Ready.</div></div></div><script>
-const $=id=>document.getElementById(id), DEFAULT_ADAPTER='https://courtflow-playlocal.onrender.com/adapter', ACCOUNTS_KEY='cf_accounts_v1';
-function loadAccounts(){try{let a=JSON.parse(localStorage.getItem(ACCOUNTS_KEY)||'[]');return Array.isArray(a)?a.filter(x=>x&&x.id&&x.name&&x.email&&typeof x.password==='string'):[]}catch{return []}}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>CourtFlow</title>
+<style>
+:root{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#17261f;background:#f3f6f4;--green:#147a55;--green2:#dff4e9;--red:#a63131;--red2:#f9e2e2;--blue:#235ea7;--blue2:#dce9fb;--border:#d9e2dc;--muted:#6d7a73}*{box-sizing:border-box}body{margin:0}.wrap{max-width:1200px;margin:auto;padding:18px}.top{display:flex;align-items:center;justify-content:space-between;gap:14px}.brand{font-size:28px;font-weight:850;letter-spacing:-.5px}.sub{color:var(--muted);font-size:13px}.pill{border-radius:999px;padding:7px 11px;background:#e6efe9;font-size:13px}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0}.tabs button,.btn{border:0;border-radius:10px;padding:10px 14px;background:#e3e9e5;color:#17261f;font:inherit;cursor:pointer}.tabs button.active,.btn.primary{background:var(--green);color:#fff}.btn.danger{background:#fae0e0;color:#7f1e1e}.btn:disabled{opacity:.55;cursor:not-allowed}.page.hidden,.hidden{display:none}.card{background:#fff;border:1px solid var(--border);border-radius:16px;padding:16px;box-shadow:0 2px 10px #00000008;margin-bottom:14px}.card h2{font-size:19px;margin:0 0 12px}.controls{display:grid;grid-template-columns:1.2fr 1fr .8fr .8fr auto;gap:10px;align-items:end}.controls.second{grid-template-columns:1.7fr .7fr auto auto;margin-top:10px}.field label{display:block;font-size:12px;font-weight:750;margin:0 0 5px}.field input,.field select{width:100%;border:1px solid #cbd6cf;border-radius:9px;padding:10px;background:#fff;font:inherit}.small{font-size:12px;color:var(--muted)}.notice{padding:10px 12px;border-radius:10px;background:#eef4f0;font-size:13px;margin-top:10px}.legend{display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:9px 0}.swatch{width:14px;height:14px;border-radius:4px;display:inline-block;vertical-align:-2px;margin-right:5px}.swatch.green{background:var(--green2);border:1px solid #80c5a7}.swatch.red{background:var(--red2);border:1px solid #d7a0a0}.swatch.blue{background:var(--blue2);border:2px solid var(--blue)}.matrix-wrap{overflow:auto;border:1px solid var(--border);border-radius:12px;max-height:64vh;background:#fff}.matrix{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%}.matrix th,.matrix td{border-right:1px solid var(--border);border-bottom:1px solid var(--border);padding:7px;text-align:center;min-width:104px}.matrix th{background:#f6f8f7;font-size:12px;position:sticky;top:0;z-index:3}.matrix th:first-child{left:0;z-index:4}.matrix td:first-child{position:sticky;left:0;background:#fff;z-index:2;font-weight:750;min-width:84px}.matrix tr:last-child td{border-bottom:0}.matrix th:last-child,.matrix td:last-child{border-right:0}.cell{display:block;width:100%;min-height:46px;border:0;border-radius:9px;padding:6px;font:inherit;font-weight:750}.cell.available{background:var(--green2);color:#12613f;cursor:pointer}.cell.unavailable{background:var(--red2);color:#8a2929;cursor:default}.cell.unknown{background:#ecefee;color:#6c7470;cursor:default}.cell.selected{background:var(--blue2);color:#164d91;outline:2px solid var(--blue);outline-offset:-2px}.cell .tiny{display:block;font-size:10px;font-weight:600;opacity:.8;margin-top:2px}.plan-row,.account-row,.booking-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;align-items:center;padding:10px 0;border-top:1px solid #edf1ee}.plan-row:first-child,.account-row:first-child,.booking-row:first-child{border-top:0}.plan-row .who{text-align:right;font-weight:750}.ok{color:var(--green)}.bad{color:var(--red)}.status{white-space:pre-wrap;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;background:#0d1712;color:#d4f4e4;padding:12px;border-radius:10px;min-height:82px;max-height:280px;overflow:auto}.two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px}.account-row{grid-template-columns:1fr auto}.booking-row{grid-template-columns:1fr 1fr auto}.selected-summary{font-weight:750;margin-left:auto}.spinner{display:inline-block;width:15px;height:15px;border:2px solid #ffffff66;border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;vertical-align:-2px;margin-right:6px}@keyframes spin{to{transform:rotate(360deg)}}
+@media(max-width:820px){.wrap{padding:12px}.top{align-items:flex-start}.controls,.controls.second,.two-col{grid-template-columns:1fr 1fr}.controls .wide,.controls.second .wide{grid-column:1/-1}.plan-row{grid-template-columns:1fr 1fr}.plan-row .who{grid-column:1/-1;text-align:left}.booking-row{grid-template-columns:1fr}.matrix-wrap{max-height:58vh}.matrix th,.matrix td{min-width:92px}.matrix td:first-child,.matrix th:first-child{min-width:76px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><div><div class="brand">CourtFlow</div><div class="sub">Exact-court PlayLocal calendar and multi-account planner</div></div><div class="pill" id="mode">Connecting…</div></div>
+  <div class="tabs"><button data-page="calendar" class="active">Court calendar</button><button data-page="bookings">Bookings</button><button data-page="accounts">Accounts</button></div>
+
+  <section id="calendar" class="page">
+    <div class="card">
+      <h2>Choose a venue and date</h2>
+      <div class="controls">
+        <div class="field wide"><label>Location</label><input id="location" value="Boston" autocomplete="off"></div>
+        <div class="field"><label>Date</label><input id="date" type="date"></div>
+        <div class="field"><label>Start</label><select id="start"></select></div>
+        <div class="field"><label>End</label><select id="end"></select></div>
+        <button class="btn primary" id="findVenues">Find venues</button>
+      </div>
+      <div class="controls second">
+        <div class="field wide"><label>Venue</label><select id="venue"><option value="">Find venues first</option></select></div>
+        <div class="field"><label>Per-account allowance per court</label><select id="limit"><option value="120" selected>2 hours</option><option value="180">3 hours</option><option value="240">4 hours</option></select></div>
+        <button class="btn primary" id="loadCalendar">Load court calendar</button>
+        <button class="btn" id="clearSelected">Clear selected</button>
+      </div>
+      <div class="notice">Green means that exact court is available at that hour. Red means that exact court is unavailable. Tap green cells to select the reservations you want.</div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h2 style="margin:0">Court availability</h2><div class="selected-summary" id="selectedSummary">0 selected</div></div>
+      <div class="legend"><span><span class="swatch green"></span>Available</span><span><span class="swatch red"></span>Unavailable</span><span><span class="swatch blue"></span>Selected</span></div>
+      <div id="matrixMessage" class="small">Choose a venue, then load the calendar.</div>
+      <div id="matrixWrap" class="matrix-wrap hidden"><table class="matrix" id="matrix"></table></div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h2 style="margin:0">Booking plan</h2><button class="btn primary" id="buildPlan">Build plan from selected cells</button><button class="btn primary hidden" id="bookPlan">Book planned slots</button></div>
+      <div class="small" style="margin-top:8px">Accounts are used in the order shown on the Accounts tab, up to the allowance for each court. Then CourtFlow switches to the next account.</div>
+      <div id="plan" class="small" style="margin-top:10px">Select one or more green cells first.</div>
+      <div id="bookingHelp" style="margin-top:10px"></div>
+    </div>
+  </section>
+
+  <section id="bookings" class="page hidden">
+    <div class="card"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h2 style="margin:0">Current PlayLocal bookings</h2><button class="btn primary" id="refreshBookings">Refresh</button></div><div id="bookingList" class="small" style="margin-top:12px">No bookings loaded yet.</div></div>
+  </section>
+
+  <section id="accounts" class="page hidden">
+    <div class="two-col">
+      <div class="card"><h2>Add PlayLocal account</h2><div class="field"><label>Name</label><input id="accountName" placeholder="Jon"></div><div class="field"><label>Email</label><input id="accountEmail" type="email"></div><div class="field"><label>Password</label><input id="accountPassword" type="password" autocomplete="current-password"></div><button class="btn primary" id="addAccount">Add account</button><div class="small" style="margin-top:10px">Accounts persist in this browser. Their order controls automatic assignment in booking plans.</div></div>
+      <div class="card"><div style="display:flex;align-items:center;gap:10px"><h2 style="margin:0">Saved accounts</h2><button class="btn danger" id="clearAccounts" style="margin-left:auto">Clear all</button></div><div id="accountList" class="small" style="margin-top:10px"></div></div>
+    </div>
+  </section>
+
+  <div class="card"><h2>Activity</h2><div class="status" id="log">Ready.</div></div>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+const ADAPTER='https://courtflow-playlocal.onrender.com/adapter';
+const ACCOUNTS_KEY='cf_accounts_v1';
+const state={accounts:loadAccounts(),sessions:new Map(),facilities:[],matrix:null,selected:new Set(),plan:[],remoteBookings:[],bookingQueue:[],bookingCursor:0,pendingVerification:null,pendingCheckRunning:false};
+
+function loadAccounts(){try{const a=JSON.parse(localStorage.getItem(ACCOUNTS_KEY)||'[]');return Array.isArray(a)?a.filter(x=>x&&x.id&&x.name&&x.email&&typeof x.password==='string'):[]}catch{return []}}
 function saveAccounts(){localStorage.setItem(ACCOUNTS_KEY,JSON.stringify(state.accounts.map(a=>({id:a.id,name:a.name,email:a.email,password:a.password}))))}
-const state={mode:'live',adapter:DEFAULT_ADAPTER,accounts:loadAccounts(),sessions:new Map(),facilities:[],slots:[],plan:[],bookings:[],remoteBookings:[],courtContext:null};
-const tomorrow=new Date(Date.now()+86400000).toISOString().slice(0,10);$('date').value=$('pdate').value=tomorrow;
-function times(sel,from=6,to=23){sel.innerHTML='';for(let h=from;h<=to;h++){let o=document.createElement('option');o.value=h*60;o.textContent=(h%12||12)+(h<12?' AM':' PM');sel.append(o)}}times($('start'));times($('end'));times($('pstart'));times($('pend'));$('start').value=960;$('end').value=1320;$('pstart').value=960;$('pend').value=1200;
-function log(x){$('log').textContent='['+new Date().toLocaleTimeString()+'] '+x+'\n'+$('log').textContent}function mode(){ $('mode').textContent=state.mode==='live'?'Live PlayLocal adapter':'Simulation ready';$('mode').className='pill '+(state.mode==='live'?'ok':'') }
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-function courtDisplayName(name){let s=String(name||'').replace(/\s+/g,' ').trim(),m=s.match(/court\s*name\s*:\s*(?:\d+\s+)?(.+?)(?=\s+-\s*\$|\s+prefer\s+a\s+different\s+court|\s+total\b|$)/i);if(m&&m[1])return m[1].trim().slice(0,100);m=s.match(/\bcourt\s*#?\s*\d+\b/i);if(s.length>100&&m)return m[0].replace('#','');return s.length>100?s.slice(0,97)+'...':s}
-async function rpc(action,payload={}){if(!state.adapter)throw Error('Set the backend adapter URL in Settings.');let r=await fetch(state.adapter,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({version:1,action,...payload})});let b=await r.json().catch(()=>null);if(!r.ok||!b?.ok){let e=Error(b?.error?.message||'Adapter request failed');e.code=b?.error?.code||'ADAPTER_ERROR';e.data=b?.error?.data||{};e.definitive=!!b?.error?.definitive;throw e}return b.data}
-async function auth(a){if(state.mode!=='live')return {sessionToken:'demo',identity:a.email.toLowerCase()};if(state.sessions.has(a.id))return state.sessions.get(a.id);let s=await rpc('authenticate',{accountId:a.id,username:a.email,password:a.password});state.sessions.set(a.id,s);return s}
-function simAvailability(q){let fs=[{id:'22',name:'West Roxbury High School',courts:[{id:'22:court:1',name:'Court 1'},{id:'22:court:2',name:'Court 2'}]}],slots=[];for(let c of fs[0].courts)for(let t=q.start;t<q.end;t+=60)slots.push({slotId:`22:${c.id}:${q.date}:${t}`,facilityId:'22',facilityName:fs[0].name,courtId:c.id,courtName:c.name,date:q.date,start:t,end:t+60,available:!((t/60+(c.id.endsWith('2')?1:0))%5===0),priceCents:0});return {facilities:fs,slots,slotMinutes:60,coverage:'complete'} }
-async function availability(q){if(state.mode!=='live')return simAvailability(q);let payload={query:q};if(state.accounts.length){let a=state.accounts[0],ss=await auth(a);payload.accountId=a.id;payload.sessionToken=ss.sessionToken}return rpc('availability',payload)}
-async function doBook(slot,a){if(state.mode==='demo'){let r={id:'DEMO-'+Math.random().toString(36).slice(2,9),...slot,accountId:a.id,accountName:a.name,status:'confirmed'};state.bookings.push(r);return r}let s=await auth(a);let r=await rpc('book',{accountId:a.id,sessionToken:s.sessionToken,slot,idempotencyKey:crypto.randomUUID(),expectedPriceCents:slot.priceCents});state.bookings.push({...r,accountName:a.name});return r}
-function renderAccounts(){ $('accounts').innerHTML=state.accounts.length?state.accounts.map((a,i)=>`<div class="account"><div><b>${esc(a.name)}</b><div class="small">${esc(a.email)}</div></div><button class="btn danger" data-del="${a.id}">Remove</button></div>`).join(''):'<div class="muted">No accounts added.</div>'; document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{state.accounts=state.accounts.filter(a=>a.id!==b.dataset.del);state.sessions.delete(b.dataset.del);saveAccounts();renderAccounts();log('Account removed and saved list updated.')})}
-function renderFacilities(){ $('facility').innerHTML=state.facilities.map(f=>`<option value="${esc(f.id)}">${esc(f.name)}</option>`).join(''); loadCourts() }
-async function loadCourts(){
-  let fid=$('facility').value;
-  state.courtContext=null;
-  if($('courtNotice'))$('courtNotice').textContent='';
-  if(!fid){$('court').innerHTML='';return}
-  if(state.mode!=='live'){
-    let f=state.facilities.find(x=>String(x.id)===fid);
-    $('court').innerHTML=(f?.courts||[]).map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');return
-  }
-  if(!state.accounts.length){$('court').innerHTML='<option value="">Add an account first</option>';return}
-  let a=state.accounts[0];
+function log(x){$('log').textContent='['+new Date().toLocaleTimeString()+'] '+x+'\n'+$('log').textContent}
+function timeLabel(m){const h=Math.floor(m/60),mm=m%60;return `${h%12||12}:${String(mm).padStart(2,'0')} ${h<12?'AM':'PM'}`}
+function shortTime(m){const h=Math.floor(m/60),mm=m%60;return `${h%12||12}${mm?':'+String(mm).padStart(2,'0'):''} ${h<12?'AM':'PM'}`}
+function cellKey(start,courtId){return `${start}|${courtId}`}
+function naturalCourt(a,b){const an=parseInt((a.name.match(/\d+/)||['9999'])[0]),bn=parseInt((b.name.match(/\d+/)||['9999'])[0]);return an-bn||a.name.localeCompare(b.name)}
+function fillTimes(sel,from=5,to=23){sel.innerHTML='';for(let h=from;h<=to;h++){const o=document.createElement('option');o.value=h*60;o.textContent=(h%12||12)+(h<12?' AM':' PM');sel.appendChild(o)}}
+fillTimes($('start'));fillTimes($('end'));$('start').value='420';$('end').value='720';
+const tomorrow=new Date(Date.now()+86400000).toISOString().slice(0,10);$('date').value=tomorrow;
+
+async function rpc(action,payload={}){const r=await fetch(ADAPTER,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({version:1,action,...payload})});const b=await r.json().catch(()=>null);if(!r.ok||!b?.ok){const e=Error(b?.error?.message||'Adapter request failed');e.code=b?.error?.code||'ADAPTER_ERROR';e.data=b?.error?.data||{};e.definitive=!!b?.error?.definitive;throw e}return b.data}
+async function auth(account){if(state.sessions.has(account.id))return state.sessions.get(account.id);const s=await rpc('authenticate',{accountId:account.id,username:account.email,password:account.password});state.sessions.set(account.id,s);return s}
+async function availability(query){const payload={query};if(state.accounts.length){const a=state.accounts[0],s=await auth(a);payload.accountId=a.id;payload.sessionToken=s.sessionToken}return rpc('availability',payload)}
+
+function renderAccounts(){
+  $('accountList').innerHTML=state.accounts.length?state.accounts.map((a,i)=>`<div class="account-row"><div><b>${i+1}. ${esc(a.name)}</b><div class="small">${esc(a.email)}</div></div><button class="btn danger" data-remove="${esc(a.id)}">Remove</button></div>`).join(''):'<div class="small">No accounts saved yet.</div>';
+  document.querySelectorAll('[data-remove]').forEach(b=>b.onclick=()=>{state.accounts=state.accounts.filter(a=>a.id!==b.dataset.remove);state.sessions.delete(b.dataset.remove);saveAccounts();renderAccounts();log('Account removed.')});
+}
+$('addAccount').onclick=()=>{const name=$('accountName').value.trim(),email=$('accountEmail').value.trim(),password=$('accountPassword').value;if(!name||!email||!password)return alert('Name, email, and password are required.');if(state.accounts.some(a=>a.email.toLowerCase()===email.toLowerCase()))return alert('That email is already saved.');state.accounts.push({id:crypto.randomUUID(),name,email,password});saveAccounts();$('accountName').value=$('accountEmail').value=$('accountPassword').value='';renderAccounts();log(`Saved account ${name}.`)};
+$('clearAccounts').onclick=()=>{if(!state.accounts.length||confirm('Clear all saved PlayLocal accounts from this browser?')){state.accounts=[];state.sessions.clear();saveAccounts();renderAccounts();log('Saved accounts cleared.')}};
+
+async function findVenues(){
+  const btn=$('findVenues');btn.disabled=true;btn.innerHTML='<span class="spinner"></span>Searching';
   try{
-    $('court').innerHTML='<option value="">Loading courts...</option>';
-    let ss=await auth(a);
-    let f=state.facilities.find(x=>String(x.id)===String(fid));
-    let d=await rpc('court_options',{accountId:a.id,sessionToken:ss.sessionToken,facilityId:fid,reservationHref:f?.reservationHref||'',reservationReferer:f?.reservationReferer||'',date:$('pdate').value,location:$('loc').value.trim(),start:+$('pstart').value,end:+$('pend').value});
-    state.courtContext=d;
-    $('court').innerHTML=(d.courts||[]).map(c=>`<option value="${esc(c.id)}">${esc(courtDisplayName(c.name))}</option>`).join('');
-    if(d.selectedDateAccessible===false){
-      let msg=d.notice||`PlayLocal is not opening exact-court booking for ${d.requestedDate} yet. Court names came from ${d.courtSourceDate}.`;
-      if($('courtNotice'))$('courtNotice').textContent=msg;
-      log(msg);
-    }
-    log(`Loaded ${(d.courts||[]).length} real court option${(d.courts||[]).length===1?'':'s'} from PlayLocal.`)
-  }catch(e){
-    $('court').innerHTML='<option value="">'+esc(e.message)+'</option>';
-    if($('courtNotice'))$('courtNotice').textContent=e.message;
-    log('Court lookup failed: '+e.message)
-  }
+    const q={date:$('date').value,location:$('location').value.trim(),sport:'tennis',start:+$('start').value,end:+$('end').value};
+    const d=await availability(q);state.facilities=(d.facilities||[]).sort((a,b)=>a.name.localeCompare(b.name));
+    $('venue').innerHTML=state.facilities.length?state.facilities.map(f=>`<option value="${esc(f.id)}">${esc(f.name)}</option>`).join(''):'<option value="">No venues found</option>';
+    state.matrix=null;state.selected.clear();renderMatrix();renderSelectedSummary();
+    log(`Found ${state.facilities.length} venue${state.facilities.length===1?'':'s'}.`);
+  }catch(e){log('Venue search failed: '+e.message);$('venue').innerHTML='<option value="">Search failed</option>'}
+  finally{btn.disabled=false;btn.textContent='Find venues'}
 }
-function t(m){let h=Math.floor(m/60),mm=m%60;return `${h%12||12}:${String(mm).padStart(2,'0')} ${h<12?'AM':'PM'}`}
-function renderResults(){let avail=state.slots.filter(s=>s.available);$('results').innerHTML=avail.length?avail.map(s=>`<div class="slot"><div><b>${esc(s.facilityName)}</b> · ${esc(s.courtName)}<div class="small">${t(s.start)} to ${t(s.end)}</div></div><button class="btn" data-slot="${esc(s.slotId)}">Book</button></div>`).join(''):'<div class="muted">No available slots returned.</div>';document.querySelectorAll('[data-slot]').forEach(b=>b.onclick=async()=>{let s=state.slots.find(x=>x.slotId===b.dataset.slot);if(!state.accounts.length)return alert('Add an account first.');let name=prompt('Book with which account?\n'+state.accounts.map((a,i)=>`${i+1}. ${a.name}`).join('\n'),'1');let a=state.accounts[Number(name)-1];if(!a)return;try{b.disabled=true;await doBook(s,a);log(`Booked ${s.courtName} ${t(s.start)} with ${a.name}`);renderBookings()}catch(e){log('Booking failed: '+e.message)}finally{b.disabled=false}})}
-function renderBookings(){
-  let html='';
-  if(state.remoteBookings.length){
-    for(const g of state.remoteBookings){
-      if(g.error){
-        html+=`<div class="account"><div><b>${esc(g.account.name)}</b><div class="small bad">${esc(g.error)}</div></div></div>`;
-        continue;
-      }
-      const rows=g.data?.reservations||[];
-      html+=`<div style="margin:14px 0 6px"><b>${esc(g.account.name)}</b><div class="small">${esc(g.account.email)}</div></div>`;
-      if(!rows.length){
-        html+='<div class="small muted">No reservations found on this account.</div>';
-        continue;
-      }
-      for(const r of rows){
-        const when=[r.date,r.start&&r.end?(r.start+' to '+r.end):r.start].filter(Boolean).join(' · ');
-        const extra=r.text&&r.text!==r.title?`<div class="small">${esc(r.text)}</div>`:'';
-        html+=`<div class="slot"><div><b>${esc(r.title||('Reservation '+r.id))}</b><div class="small">${esc(when)}</div>${extra}</div><span class="${r.status==='cancelled'?'bad':'ok'}">${esc(r.status||'current')}</span></div>`;
-      }
-    }
-  }
-  if(state.bookings.length){
-    html+='<div style="margin:18px 0 6px"><b>Booked in this CourtFlow session</b></div>';
-    html+=state.bookings.map(r=>`<div class="slot"><div><b>${esc(r.accountName||r.accountId)}</b> · ${esc(r.courtName||'Court')}<div class="small">${esc(r.date)} · ${t(r.start)} to ${t(r.end)}</div></div><span class="ok">confirmed</span></div>`).join('');
-  }
-  $('bookingList').innerHTML=html||'<div class="muted">No bookings loaded yet.</div>';
-}
-async function refreshCurrentBookings(){
-  if(state.mode!=='live'){log('Current PlayLocal bookings require live mode.');return}
-  if(!state.accounts.length){$('bookingList').innerHTML='<div class="muted">Add an account first.</div>';return}
-  const btn=$('refreshBookings');
-  btn.disabled=true; btn.textContent='Loading...'; state.remoteBookings=[];
-  for(const a of state.accounts){
-    try{
-      log(`Loading current bookings for ${a.name}...`);
-      const ss=await auth(a);
-      const d=await rpc('history',{accountId:a.id,sessionToken:ss.sessionToken});
-      state.remoteBookings.push({account:a,data:d});
-      const n=d.count??(d.reservations||[]).length;
-      log(`Loaded ${n} booking${n===1?'':'s'} for ${a.name}.`);
-    }catch(e){
-      state.remoteBookings.push({account:a,error:e.message});
-      log(`Bookings failed for ${a.name}: ${e.message}`);
-    }
-  }
-  renderBookings(); btn.disabled=false; btn.textContent='Refresh current PlayLocal bookings';
-}
-$('searchBtn').onclick=async()=>{try{log('Searching availability...');let q={location:$('loc').value,sport:'tennis',date:$('date').value,start:+$('start').value,end:+$('end').value};let d=await availability(q);state.facilities=d.facilities;state.slots=d.slots;renderResults();renderFacilities();log(`Loaded ${d.slots.length} slots.`)}catch(e){log('Search failed: '+e.message)}};
-$('facility').onchange=loadCourts;$('pdate').onchange=loadCourts;$('pstart').onchange=loadCourts;
-$('planBtn').onclick=async()=>{
+$('findVenues').onclick=findVenues;
+
+async function mapLimit(items,limit,fn){const out=new Array(items.length);let next=0;async function worker(){while(true){const i=next++;if(i>=items.length)return;try{out[i]=await fn(items[i],i)}catch(e){out[i]={error:e}}}}await Promise.all(Array.from({length:Math.min(limit,items.length)},worker));return out}
+
+async function loadCalendar(){
+  if(!state.accounts.length){document.querySelector('[data-page="accounts"]').click();return alert('Add at least one PlayLocal account first so CourtFlow can read exact-court availability.');}
+  const fid=$('venue').value;if(!fid)return alert('Choose a venue first.');
+  const start=+$('start').value,end=+$('end').value;if(end<=start)return alert('End must be after start.');
+  const btn=$('loadCalendar');btn.disabled=true;btn.innerHTML='<span class="spinner"></span>Loading';
+  $('matrixMessage').textContent='Checking each exact court and hour with PlayLocal…';$('matrixWrap').classList.add('hidden');state.selected.clear();renderSelectedSummary();
+  const account=state.accounts[0];
   try{
-    if(!state.accounts.length)throw Error('Add at least one account.');
-    let facilityId=$('facility').value,court=$('court').value,location=$('loc').value.trim();
-    if(!facilityId)throw Error('Search first, then choose a facility.');
-    if(!court)throw Error('Choose a specific court.');
-    let q={location,sport:'tennis',date:$('pdate').value,start:+$('pstart').value,end:+$('pend').value,facilityId};
-    let courtName=$('court').selectedOptions[0]?.textContent||court;
-    let d=await availability(q);
-    state.facilities=d.facilities;state.slots=d.slots;
-    let limit=+$('limit').value,usage=Object.fromEntries(state.accounts.map(a=>[a.id,0])),rows=[];
-    let lookupAccount=state.accounts[0],lookupSession=state.mode==='live'?await auth(lookupAccount):null;
-
-    for(let tt=q.start;tt<q.end;tt+=60){
-      let base=d.slots.find(x=>x.start===tt);
-      if(!base||!base.available){rows.push({status:'unavailable',start:tt,label:'Unavailable'});continue}
-
-      let exact=null;
-      if(state.mode==='live'){
-        try{
-          exact=await rpc('court_options',{
-            accountId:lookupAccount.id,sessionToken:lookupSession.sessionToken,
-            facilityId,date:q.date,location,start:tt,end:tt+60
-          });
-        }catch(e){
-          rows.push({status:'unavailable',start:tt,label:'Court unavailable'});
-          log(`Court check ${t(tt)}: ${e.message}`);
-          continue;
-        }
-        if(!(exact.courts||[]).some(c=>String(c.id)===String(court))){
-          rows.push({status:'unavailable',start:tt,label:'Court unavailable'});
-          continue;
-        }
-      }
-
-      let a=state.accounts.find(a=>usage[a.id]+60<=limit);
-      if(!a){rows.push({status:'limit',start:tt,label:'Account limit reached'});continue}
-      usage[a.id]+=60;
-      let f=state.facilities.find(x=>String(x.id)===String(facilityId));
-      let s={
-        ...base,courtId:court,courtName,searchLocation:location,
-        reservationHref:exact?.reservationHref||f?.reservationHref||base.reservationHref||'',
-        reservationReferer:exact?.reservationReferer||f?.reservationReferer||base.reservationReferer||'',
-        reservationUrl:exact?.reservationUrl||''
-      };
-      rows.push({status:'planned',start:tt,slot:s,account:a,label:a.name});
-    }
-    state.plan=rows;
-    $('plan').innerHTML=rows.map(r=>`<div class="planrow"><span>${t(r.start)}</span><span class="${r.status==='planned'?'ok':'bad'}">${r.status==='planned'?esc(r.account.name):esc(r.label)}</span></div>`).join('');
-    $('bookPlan').classList.toggle('hidden',!rows.some(r=>r.status==='planned'));
-    let filled=rows.filter(r=>r.status==='planned').length;
-    log(`Plan built: ${filled} of ${rows.length} hour${rows.length===1?'':'s'} assigned for ${courtName}.`)
-  }catch(e){log('Plan failed: '+e.message)}
-};
-function renderPlanState(){
-  $('plan').innerHTML=state.plan.map(r=>{
-    let label=r.label||'';
-    let cls='bad';
-    if(r.status==='planned'){label=r.account?.name||label;cls='ok'}
-    else if(r.status==='booked'){label=`Booked · ${r.account?.name||''}`;cls='ok'}
-    else if(r.status==='verification'){label=`Verify · ${r.account?.name||''}`;cls='bad'}
-    return `<div class="planrow"><span>${t(r.start)}</span><span class="${cls}">${esc(label)}</span></div>`
-  }).join('');
+    const ss=await auth(account),hours=[];for(let t=start;t<end;t+=60)hours.push(t);
+    const facility=state.facilities.find(f=>String(f.id)===String(fid));
+    const results=await mapLimit(hours,3,async t=>{
+      try{
+        const d=await rpc('court_options',{accountId:account.id,sessionToken:ss.sessionToken,facilityId:fid,date:$('date').value,location:$('location').value.trim(),start:t,end:t+60});
+        return {start:t,status:'ok',courts:d.courts||[],reservationUrl:d.reservationUrl||''};
+      }catch(e){if(e.code==='SLOT_UNAVAILABLE'||e.code==='COURT_UNAVAILABLE')return {start:t,status:'ok',courts:[],reservationUrl:''};return {start:t,status:'unknown',courts:[],error:e.message||String(e)}}
+    });
+    const byId=new Map();for(const r of results)for(const c of r.courts||[])byId.set(String(c.id),{id:String(c.id),name:c.name});
+    let courts=[...byId.values()].sort(naturalCourt);
+    const expected=Number(facility?.reservableCourtCount||0);
+    if(expected>courts.length&&courts.every(c=>/court\s*\d+/i.test(c.name))){const used=new Set(courts.map(c=>Number((c.name.match(/\d+/)||[0])[0])));for(let i=1;i<=expected;i++)if(!used.has(i))courts.push({id:`missing:${i}`,name:`Court ${i}`,placeholder:true});courts.sort(naturalCourt)}
+    const slots=[];for(const r of results){const availableIds=new Set((r.courts||[]).map(c=>String(c.id)));for(const c of courts){const available=!c.placeholder&&availableIds.has(String(c.id))&&r.status==='ok';slots.push({slotId:`${fid}:${c.id}:${$('date').value}:${r.start}`,facilityId:String(fid),facilityName:facility?.name||'Venue',courtId:String(c.id),courtName:c.name,date:$('date').value,start:r.start,end:r.start+60,available,unknown:r.status==='unknown',priceCents:0,reservationUrl:r.reservationUrl||'',searchLocation:$('location').value.trim()})}}
+    state.matrix={facility,courts,hours,slots};renderMatrix();log(`Loaded exact-court calendar: ${courts.length} court${courts.length===1?'':'s'} across ${hours.length} hour${hours.length===1?'':'s'}.`);
+  }catch(e){state.matrix=null;$('matrixMessage').textContent='Calendar load failed: '+e.message;log('Calendar load failed: '+e.message)}
+  finally{btn.disabled=false;btn.textContent='Load court calendar'}
 }
+$('loadCalendar').onclick=loadCalendar;
 
-function verificationHelp(row,url){
-  let help=$('bookingHelp');
-  let account=row.account;
-  let court=row.slot?.courtName||'selected court';
-  if(window.CourtFlowNative&&typeof window.CourtFlowNative.startBooking==='function'){
-    help.innerHTML=`<div class="notice"><b>Finishing in PlayLocal</b><div style="margin-top:6px">CourtFlow is opening <b>${esc(court)}</b> at <b>${t(row.start)}</b> using <b>${esc(account.name)}</b>. If PlayLocal shows a verification challenge, complete it in the booking window. CourtFlow will submit as soon as PlayLocal says verification is complete, then confirm the reservation in Activity and continue.</div></div>`;
-    try{
-      window.CourtFlowNative.startBooking(JSON.stringify({
-        url,
-        accountName:account.name,
-        email:account.email,
-        password:account.password,
-        courtId:row.slot?.courtId||'',
-        courtName:court,
-        timeLabel:t(row.start)
-      }));
-    }catch(e){
-      log('Could not open the native PlayLocal booking window: '+e.message);
-    }
-    return;
-  }
-  help.innerHTML=`<div class="notice"><b>One quick PlayLocal step</b><div style="margin-top:6px">Book <b>${esc(court)}</b> at <b>${t(row.start)}</b> using <b>${esc(account.name)}</b> (${esc(account.email)}). Complete PlayLocal's verification and submit the reservation. CourtFlow will check Activity when you return and continue automatically.</div><div style="margin-top:10px"><a class="btn primary" href="${esc(url)}" target="_blank" rel="noopener">Open PlayLocal for ${t(row.start)}</a> <button class="btn" id="checkPendingBooking">Check & continue</button></div></div>`;
-  $('checkPendingBooking').onclick=()=>checkPendingBooking(true);
+function renderMatrix(){
+  if(!state.matrix){$('matrixWrap').classList.add('hidden');$('matrixMessage').classList.remove('hidden');if(!$('matrixMessage').textContent)$('matrixMessage').textContent='Choose a venue, then load the calendar.';return}
+  const {courts,hours,slots}=state.matrix,lookup=new Map(slots.map(s=>[cellKey(s.start,s.courtId),s]));
+  let h='<thead><tr><th>Time</th>'+courts.map(c=>`<th>${esc(c.name)}</th>`).join('')+'</tr></thead><tbody>';
+  for(const t of hours){h+=`<tr><td>${shortTime(t)}</td>`;for(const c of courts){const s=lookup.get(cellKey(t,c.id));const key=cellKey(t,c.id),selected=state.selected.has(key);let cls='unknown',label='?';if(s&&!s.unknown){cls=s.available?'available':'unavailable';label=s.available?'Available':'Unavailable'}if(selected){cls+=' selected';label='Selected'}h+=`<td><button class="cell ${cls}" ${s?.available?'data-cell="'+esc(key)+'"':''} title="${esc(c.name+' '+timeLabel(t))}">${label}</button></td>`}h+='</tr>'}h+='</tbody>';
+  $('matrix').innerHTML=h;$('matrixMessage').classList.add('hidden');$('matrixWrap').classList.remove('hidden');document.querySelectorAll('[data-cell]').forEach(b=>b.onclick=()=>{const k=b.dataset.cell;if(state.selected.has(k))state.selected.delete(k);else state.selected.add(k);renderMatrix();renderSelectedSummary()});
 }
+function renderSelectedSummary(){$('selectedSummary').textContent=`${state.selected.size} selected`}
+$('clearSelected').onclick=()=>{state.selected.clear();renderMatrix();renderSelectedSummary();state.plan=[];renderPlan()};
 
-async function verifyRowInActivity(row){
-  let ss=await auth(row.account);
-  return rpc('verify_booking',{accountId:row.account.id,sessionToken:ss.sessionToken,slot:row.slot});
+function selectedSlots(){if(!state.matrix)return[];const lookup=new Map(state.matrix.slots.map(s=>[cellKey(s.start,s.courtId),s]));return [...state.selected].map(k=>lookup.get(k)).filter(Boolean).sort((a,b)=>a.start-b.start||naturalCourt({name:a.courtName},{name:b.courtName}))}
+function knownUsageFromBookings(date,courtName,account){const group=state.remoteBookings.find(g=>g.account.id===account.id);if(!group||group.error)return 0;const needle=courtName.toLowerCase();return (group.data?.reservations||[]).filter(r=>r.date===date&&((r.title||'')+' '+(r.text||'')).toLowerCase().includes(needle)).length*60}
+async function buildPlan(){
+  const slots=selectedSlots();if(!slots.length)return alert('Select at least one green court/hour cell first.');if(!state.accounts.length)return alert('Add at least one account first.');
+  const btn=$('buildPlan');btn.disabled=true;btn.textContent='Building…';
+  try{await refreshCurrentBookings(false);const limit=+$('limit').value,usage=new Map(),rows=[];for(const slot of slots){let assigned=null;for(const a of state.accounts){const key=`${a.id}|${slot.date}|${slot.courtName.toLowerCase()}`;if(!usage.has(key))usage.set(key,knownUsageFromBookings(slot.date,slot.courtName,a));if(usage.get(key)+60<=limit){assigned=a;usage.set(key,usage.get(key)+60);break}}rows.push(assigned?{start:slot.start,status:'planned',slot,account:assigned,label:assigned.name}:{start:slot.start,status:'unassigned',slot,label:'Account limit reached'})}state.plan=rows;renderPlan();const filled=rows.filter(r=>r.status==='planned').length;log(`Built booking plan for ${filled} of ${rows.length} selected slot${rows.length===1?'':'s'}.`)}catch(e){log('Plan build failed: '+e.message)}finally{btn.disabled=false;btn.textContent='Build plan from selected cells'}
 }
+$('buildPlan').onclick=buildPlan;
+function renderPlan(){if(!state.plan.length){$('plan').innerHTML='<div class="small">Select one or more green cells first.</div>';$('bookPlan').classList.add('hidden');return}$('plan').innerHTML=state.plan.map(r=>`<div class="plan-row"><div><b>${esc(r.slot.courtName)}</b><div class="small">${timeLabel(r.slot.start)} to ${timeLabel(r.slot.end)}</div></div><div class="small">${esc(r.slot.facilityName)}</div><div class="who ${r.status==='planned'||r.status==='booked'?'ok':'bad'}">${esc(r.status==='booked'?'Booked · '+r.account.name:r.status==='verification'?'Verify · '+r.account.name:r.status==='planned'?r.account.name:r.label)}</div></div>`).join('');$('bookPlan').classList.toggle('hidden',!state.plan.some(r=>r.status==='planned'))}
 
-async function checkPendingBooking(manual=false){
-  let pending=state.pendingVerification;
-  if(!pending||state.pendingCheckRunning)return false;
-  state.pendingCheckRunning=true;
-  try{
-    for(let attempt=0;attempt<5;attempt++){
-      let v=await verifyRowInActivity(pending.row);
-      if(v.confirmed){
-        pending.row.status='booked';
-        pending.row.label=`Booked · ${pending.row.account.name}`;
-        log(`Confirmed ${t(pending.row.start)} in PlayLocal Activity for ${pending.row.account.name}.`);
-        state.pendingVerification=null;
-        $('bookingHelp').innerHTML='';
-        state.bookingCursor++;
-        renderPlanState();
-        await refreshCurrentBookings();
-        state.pendingCheckRunning=false;
-        await continuePlanBooking();
-        return true;
-      }
-      if(attempt<4)await new Promise(r=>setTimeout(r,1800));
-    }
-    if(manual)log(`No ${t(pending.row.start)} reservation is showing in PlayLocal Activity yet.`);
-    return false;
-  }catch(e){
-    if(manual)log('Booking check failed: '+e.message);
-    return false;
-  }finally{
-    state.pendingCheckRunning=false;
-  }
-}
+async function doBook(slot,account){const ss=await auth(account);return rpc('book',{accountId:account.id,sessionToken:ss.sessionToken,slot,idempotencyKey:crypto.randomUUID(),expectedPriceCents:slot.priceCents||0})}
+function verificationHelp(row,url){const help=$('bookingHelp'),a=row.account,court=row.slot.courtName;help.innerHTML=`<div class="notice"><b>Finish this reservation in PlayLocal</b><div style="margin-top:6px">Use <b>${esc(a.name)}</b> (${esc(a.email)}) to book <b>${esc(court)}</b> at <b>${timeLabel(row.start)}</b>. Complete PlayLocal's verification and submit. CourtFlow will check Activity when you return and continue the plan.</div><div style="margin-top:10px"><a class="btn primary" href="${esc(url)}" target="_blank" rel="noopener">Open PlayLocal</a> <button class="btn" id="checkPending">Check & continue</button></div></div>`;$('checkPending').onclick=()=>checkPendingBooking(true)}
+async function verifyRow(row){const ss=await auth(row.account);return rpc('verify_booking',{accountId:row.account.id,sessionToken:ss.sessionToken,slot:row.slot})}
+async function checkPendingBooking(manual=false){const p=state.pendingVerification;if(!p||state.pendingCheckRunning)return false;state.pendingCheckRunning=true;try{for(let i=0;i<4;i++){const v=await verifyRow(p.row);if(v.confirmed){p.row.status='booked';state.pendingVerification=null;$('bookingHelp').innerHTML='';state.bookingCursor++;renderPlan();log(`Confirmed ${p.row.slot.courtName} ${timeLabel(p.row.start)} for ${p.row.account.name}.`);await refreshCurrentBookings(false);state.pendingCheckRunning=false;await continuePlanBooking();return true}if(i<3)await new Promise(r=>setTimeout(r,1500))}if(manual)log('That reservation is not showing in PlayLocal Activity yet.');return false}catch(e){if(manual)log('Reservation check failed: '+e.message);return false}finally{state.pendingCheckRunning=false}}
+async function continuePlanBooking(){if(state.pendingVerification)return;while(state.bookingCursor<state.bookingQueue.length){const row=state.bookingQueue[state.bookingCursor];try{const result=await doBook(row.slot,row.account);row.status='booked';state.bookingCursor++;renderPlan();log(`Booked ${row.slot.courtName} ${timeLabel(row.start)} with ${row.account.name}${result?.reconciled?' and confirmed in Activity':''}.`)}catch(e){if(e.code==='VERIFICATION_REQUIRED'){const url=e.data?.reservationUrl||row.slot.reservationUrl||'';row.status='verification';state.pendingVerification={row,url};renderPlan();log(`${row.slot.courtName} ${timeLabel(row.start)} needs PlayLocal browser verification for ${row.account.name}.`);if(url)verificationHelp(row,url);else $('bookingHelp').textContent='PlayLocal requires verification, but no continuation URL was returned.';return}row.status='failed';row.label=e.message;renderPlan();log(`Stopped at ${row.slot.courtName} ${timeLabel(row.start)}: ${e.message}`);return}}$('bookingHelp').innerHTML='<span class="ok"><b>All planned reservations are confirmed.</b></span>';log('All planned reservations are confirmed.');await refreshCurrentBookings(false)}
+$('bookPlan').onclick=async()=>{state.bookingQueue=state.plan.filter(r=>r.status==='planned');state.bookingCursor=0;state.pendingVerification=null;$('bookingHelp').innerHTML='';await continuePlanBooking()};
+window.addEventListener('focus',()=>{if(state.pendingVerification)setTimeout(()=>checkPendingBooking(false),700)});document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state.pendingVerification)setTimeout(()=>checkPendingBooking(false),700)});
 
-async function continuePlanBooking(){
-  if(state.pendingVerification)return;
-  let queue=state.bookingQueue||[];
-  while((state.bookingCursor||0)<queue.length){
-    let row=queue[state.bookingCursor];
-    try{
-      let result=await doBook(row.slot,row.account);
-      row.status='booked';
-      row.label=`Booked · ${row.account.name}`;
-      log(`Booked ${t(row.start)} with ${row.account.name}${result?.reconciled?' (confirmed in PlayLocal Activity)':''}.`);
-      state.bookingCursor++;
-      renderPlanState();
-      continue;
-    }catch(e){
-      if(e.code==='VERIFICATION_REQUIRED'){
-        let url=e.data?.reservationUrl||row.slot.reservationUrl||'';
-        row.status='verification';
-        row.label=`Verify · ${row.account.name}`;
-        state.pendingVerification={row,url};
-        renderPlanState();
-        log(`${t(row.start)} needs PlayLocal browser verification for ${row.account.name}.`);
-        if(url)verificationHelp(row,url);
-        else $('bookingHelp').textContent='PlayLocal requires browser verification, but CourtFlow did not receive a continuation URL.';
-        return;
-      }
-      row.status='failed';
-      row.label=e.message||'Booking failed';
-      renderPlanState();
-      log(`Stopped at ${t(row.start)}: ${e.message}`);
-      return;
-    }
-  }
-  $('bookingHelp').innerHTML='<span class="ok">All planned reservations are confirmed.</span>';
-  log('All planned slots are confirmed in PlayLocal.');
-  await refreshCurrentBookings();
-}
+async function refreshCurrentBookings(showLog=true){state.remoteBookings=[];for(const a of state.accounts){try{const ss=await auth(a),d=await rpc('history',{accountId:a.id,sessionToken:ss.sessionToken});state.remoteBookings.push({account:a,data:d})}catch(e){state.remoteBookings.push({account:a,error:e.message})}}renderBookings();if(showLog)log(`Loaded current bookings for ${state.accounts.length} account${state.accounts.length===1?'':'s'}.`)}
+function renderBookings(){if(!state.remoteBookings.length){$('bookingList').innerHTML='<div class="small">No bookings loaded yet.</div>';return}let h='';for(const g of state.remoteBookings){h+=`<div style="margin:14px 0 6px"><b>${esc(g.account.name)}</b><div class="small">${esc(g.account.email)}</div></div>`;if(g.error){h+=`<div class="bad small">${esc(g.error)}</div>`;continue}const rows=g.data?.reservations||[];if(!rows.length){h+='<div class="small">No current reservations found.</div>';continue}for(const r of rows)h+=`<div class="booking-row"><div><b>${esc(r.title||'Reservation')}</b><div class="small">${esc(r.text||'')}</div></div><div>${esc([r.date,r.start&&r.end?`${r.start} to ${r.end}`:r.start].filter(Boolean).join(' · '))}</div><div class="ok">${esc(r.status||'current')}</div></div>`}$('bookingList').innerHTML=h}
+$('refreshBookings').onclick=()=>refreshCurrentBookings(true);
 
-$('bookPlan').onclick=async()=>{
-  $('bookingHelp').innerHTML='';
-  state.bookingQueue=state.plan.filter(x=>x.status==='planned'||x.status==='verification');
-  state.bookingCursor=0;
-  state.pendingVerification=null;
-  state.pendingCheckRunning=false;
-  await continuePlanBooking();
-};
-
-window.addEventListener('courtflow-native-booking-complete',()=>{
-  if(state.pendingVerification)setTimeout(()=>checkPendingBooking(true),500);
-});
-window.addEventListener('courtflow-native-message',e=>{
-  if(e?.detail)log(String(e.detail));
-});
-window.addEventListener('focus',()=>{
-  if(state.pendingVerification)setTimeout(()=>checkPendingBooking(false),700);
-});
-document.addEventListener('visibilitychange',()=>{
-  if(!document.hidden&&state.pendingVerification)setTimeout(()=>checkPendingBooking(false),700);
-});
-$('addAcct').onclick=()=>{let n=$('aname').value.trim(),e=$('aemail').value.trim(),p=$('apass').value;if(!n||!e||!p)return alert('Enter name, email, and password.');if(state.accounts.some(a=>a.email.toLowerCase()===e.toLowerCase()))return alert('That PlayLocal account is already saved.');state.accounts.push({id:crypto.randomUUID(),name:n,email:e,password:p});saveAccounts();$('aname').value=$('aemail').value=$('apass').value='';renderAccounts();log('Account saved in this browser.')};
-$('clearAccts').onclick=()=>{if(!state.accounts.length)return; if(!confirm('Clear all saved PlayLocal accounts from this browser?'))return;state.accounts=[];state.sessions.clear();state.remoteBookings=[];saveAccounts();renderAccounts();renderBookings();log('All saved accounts cleared from this browser.')};
-$('refreshBookings').onclick=refreshCurrentBookings;
-$('connect').onclick=async()=>{try{state.adapter=DEFAULT_ADAPTER;let c=await rpc('capabilities');if(c.vendor!=='playlocal')throw Error('The built-in endpoint is not the PlayLocal adapter.');state.mode='live';mode();log('Live adapter connected.')}catch(e){log('Connection failed: '+e.message)}};$('demo').onclick=()=>{state.mode='demo';mode();log('Simulation mode enabled.')};
-document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('active'));b.classList.add('active');document.querySelectorAll('.page').forEach(x=>x.classList.add('hidden'));$(b.dataset.page).classList.remove('hidden');if(b.dataset.page==='bookings'&&state.mode==='live')refreshCurrentBookings()});renderAccounts();mode();log(state.accounts.length?`Restored ${state.accounts.length} saved account${state.accounts.length===1?'':'s'}.`:'No saved accounts yet.');(async()=>{try{let c=await rpc('capabilities');if(c.vendor==='playlocal'){state.mode='live';mode();log('Live PlayLocal backend connected automatically.')}}catch(e){state.mode='demo';mode();log('Live backend unavailable; simulation remains available: '+e.message)}})();
-</script></body></html>
+document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('active'));b.classList.add('active');document.querySelectorAll('.page').forEach(x=>x.classList.add('hidden'));$(b.dataset.page).classList.remove('hidden');if(b.dataset.page==='bookings')refreshCurrentBookings(false)});
+renderAccounts();renderSelectedSummary();renderPlan();
+(async()=>{try{const c=await rpc('capabilities');if(c.vendor!=='playlocal')throw Error('Unexpected backend');$('mode').textContent='Live PlayLocal';$('mode').className='pill ok';log('Live PlayLocal backend connected.')}catch(e){$('mode').textContent='Backend unavailable';$('mode').className='pill bad';log('Backend connection failed: '+e.message)}})();
+</script>
+</body>
+</html>
