@@ -1,0 +1,33 @@
+name: Robust court controls
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - scripts/robust_court_controls.py
+      - .github/workflows/robust-court-controls.yml
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply patch
+        run: python scripts/robust_court_controls.py
+      - name: Verify
+        run: |
+          python -m py_compile playlocal_server.py
+          python - <<'PY'
+          from pathlib import Path
+          s=Path('playlocal_server.py').read_text()
+          assert 'def _court_controls(form):' in s
+          assert 'PlayLocal court control was not recognized. Form controls:' in s
+          assert "COURT_UNAVAILABLE" in s
+          PY
+      - name: Commit
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add playlocal_server.py
+          git commit -m "Recognize PlayLocal court selects and radios" || exit 0
+          git push
