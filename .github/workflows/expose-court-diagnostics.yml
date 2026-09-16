@@ -1,0 +1,56 @@
+name: Expose court lookup diagnostics
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/expose-court-diagnostics.yml
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch diagnostics
+        shell: python
+        run: |
+          from pathlib import Path
+
+          p=Path('index.html')
+          s=p.read_text()
+          old="catch(e){$('court').innerHTML='<option value=\"\">Could not load courts</option>';log('Court lookup failed: '+e.message)}"
+          new="catch(e){$('court').innerHTML=`<option value=\"\">${esc(e.message)}</option>`;log('Court lookup failed: '+e.message)}"
+          if old not in s:
+              raise SystemExit('frontend court error block not found')
+          p.write_text(s.replace(old,new,1))
+
+          p=Path('playlocal_server.py')
+          s=p.read_text()
+          old="""        except ApiError as e:
+            payload = {'version': 1, 'ok': False, 'error': {'code': e.code, 'message': e.message, 'definitive': e.definitive}}
+            status = e.status
+"""
+          new="""        except ApiError as e:
+            print(f'API error {e.code}: {e.message}', flush=True)
+            payload = {'version': 1, 'ok': False, 'error': {'code': e.code, 'message': e.message, 'definitive': e.definitive}}
+            status = e.status
+"""
+          if old not in s:
+              raise SystemExit('backend ApiError block not found')
+          p.write_text(s.replace(old,new,1))
+      - name: Verify
+        run: |
+          python -m py_compile playlocal_server.py
+          python - <<'PY'
+          from pathlib import Path
+          s=Path('index.html').read_text()
+          assert "${esc(e.message)}" in s
+          assert "API error {e.code}" in Path('playlocal_server.py').read_text()
+          PY
+      - name: Commit
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add index.html playlocal_server.py
+          git commit -m "Expose PlayLocal court lookup diagnostics"
+          git push
