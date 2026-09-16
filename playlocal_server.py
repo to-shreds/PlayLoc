@@ -610,6 +610,7 @@ class Handler(SimpleHTTPRequestHandler):
             payload = {'version': 1, 'ok': True, 'data': dispatch(req)}
             status = 200
         except ApiError as e:
+            print(f'API error {e.code}: {e.message}', flush=True)
             payload = {'version': 1, 'ok': False, 'error': {'code': e.code, 'message': e.message, 'definitive': e.definitive}}
             status = e.status
         except requests.RequestException as e:
