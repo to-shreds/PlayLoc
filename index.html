@@ -15,6 +15,7 @@ const tomorrow=new Date(Date.now()+86400000).toISOString().slice(0,10);$('date')
 function times(sel,from=6,to=23){sel.innerHTML='';for(let h=from;h<=to;h++){let o=document.createElement('option');o.value=h*60;o.textContent=(h%12||12)+(h<12?' AM':' PM');sel.append(o)}}times($('start'));times($('end'));times($('pstart'));times($('pend'));$('start').value=960;$('end').value=1320;$('pstart').value=960;$('pend').value=1200;
 function log(x){$('log').textContent='['+new Date().toLocaleTimeString()+'] '+x+'\n'+$('log').textContent}function mode(){ $('mode').textContent=state.mode==='live'?'Live PlayLocal adapter':'Simulation ready';$('mode').className='pill '+(state.mode==='live'?'ok':'') }
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function courtDisplayName(name){let s=String(name||'').replace(/\s+/g,' ').trim(),m=s.match(/court\s*name\s*:\s*(?:\d+\s+)?(.+?)(?=\s+-\s*\$|\s+prefer\s+a\s+different\s+court|\s+total\b|$)/i);if(m&&m[1])return m[1].trim().slice(0,100);m=s.match(/\bcourt\s*#?\s*\d+\b/i);if(s.length>100&&m)return m[0].replace('#','');return s.length>100?s.slice(0,97)+'...':s}
 async function rpc(action,payload={}){if(!state.adapter)throw Error('Set the backend adapter URL in Settings.');let r=await fetch(state.adapter,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({version:1,action,...payload})});let b=await r.json().catch(()=>null);if(!r.ok||!b?.ok)throw Error(b?.error?.message||'Adapter request failed');return b.data}
 async function auth(a){if(state.mode!=='live')return {sessionToken:'demo',identity:a.email.toLowerCase()};if(state.sessions.has(a.id))return state.sessions.get(a.id);let s=await rpc('authenticate',{accountId:a.id,username:a.email,password:a.password});state.sessions.set(a.id,s);return s}
 function simAvailability(q){let fs=[{id:'22',name:'West Roxbury High School',courts:[{id:'22:court:1',name:'Court 1'},{id:'22:court:2',name:'Court 2'}]}],slots=[];for(let c of fs[0].courts)for(let t=q.start;t<q.end;t+=60)slots.push({slotId:`22:${c.id}:${q.date}:${t}`,facilityId:'22',facilityName:fs[0].name,courtId:c.id,courtName:c.name,date:q.date,start:t,end:t+60,available:!((t/60+(c.id.endsWith('2')?1:0))%5===0),priceCents:0});return {facilities:fs,slots,slotMinutes:60,coverage:'complete'} }
@@ -39,7 +40,7 @@ async function loadCourts(){
     let f=state.facilities.find(x=>String(x.id)===String(fid));
     let d=await rpc('court_options',{accountId:a.id,sessionToken:ss.sessionToken,facilityId:fid,reservationHref:f?.reservationHref||'',reservationReferer:f?.reservationReferer||'',date:$('pdate').value,location:$('loc').value.trim(),start:+$('pstart').value,end:+$('pend').value});
     state.courtContext=d;
-    $('court').innerHTML=(d.courts||[]).map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
+    $('court').innerHTML=(d.courts||[]).map(c=>`<option value="${esc(c.id)}">${esc(courtDisplayName(c.name))}</option>`).join('');
     if(d.selectedDateAccessible===false){
       let msg=d.notice||`PlayLocal is not opening exact-court booking for ${d.requestedDate} yet. Court names came from ${d.courtSourceDate}.`;
       if($('courtNotice'))$('courtNotice').textContent=msg;

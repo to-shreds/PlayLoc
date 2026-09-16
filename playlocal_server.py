@@ -345,69 +345,136 @@ def _control_label(form, el):
         lab = form.find('label', attrs={'for': el.get('id')})
         if lab:
             bits.append(clean(lab.get_text(' ', strip=True)))
-    parent = el.find_parent(['label', 'div', 'li', 'td'])
+    parent = el.find_parent(['label', 'li', 'article', 'div', 'td'])
     if parent:
-        bits.append(clean(parent.get_text(' ', strip=True))[:160])
+        bits.append(clean(parent.get_text(' ', strip=True))[:220])
     return clean(' '.join(x for x in bits if x))
+
+
+def _court_name_from_text(text, value=''):
+    text = clean(text)
+    if not text:
+        return ''
+
+    # PlayLocal's current reservation cards can wrap a hidden reservable_id
+    # inside the entire reservation summary. Prefer the explicit court-name
+    # phrase and discard price/summary text around it.
+    m = re.search(
+        r'court\s*name\s*:\s*(?:\d+\s+)?(.+?)(?=\s+-\s*\$|\s+prefer\s+a\s+different\s+court|\s+total\b|$)',
+        text,
+        re.I,
+    )
+    if m:
+        name = clean(m.group(1))
+        if name:
+            return name[:100]
+
+    # Normal option labels are usually already short, e.g. "Court 2 - $0".
+    if len(text) <= 100 and not re.search(
+        r'your\s+reservation|total\s+price|terms\s+of\s+service|verification\s+to\s+complete',
+        text,
+        re.I,
+    ):
+        name = re.sub(r'\s+-\s*\$\s*\d+(?:\.\d{1,2})?.*$', '', text).strip()
+        if name:
+            return name[:100]
+
+    # Defensive fallback for verbose reservation-card text.
+    m = re.search(r'\bcourt\s*#?\s*\d+\b', text, re.I)
+    if m:
+        return clean(m.group(0)).replace('#', '').title()
+    return ''
 
 
 def _court_controls(form):
     controls = []
+    seen = set()
+
+    # PlayLocal's actual field is reservation[reservable_id]. Depending on
+    # the page version it can be a select, radio, or hidden control inside a
+    # court-selection card. Restrict discovery to those semantic controls so
+    # unrelated reservation fields cannot become fake court choices.
+    selectors = [
+        'select#reservation_reservable_id',
+        'select[name*="reservable_id"]',
+        '[data-role="court-selection"] select',
+        'input[type="radio"][name*="reservable_id"]',
+        'input[type="hidden"][name*="reservable_id"]',
+        '[data-role="court-selection"] input[type="radio"]',
+        '[data-role="court-selection"] input[type="hidden"]',
+    ]
+    for selector in selectors:
+        for el in form.select(selector):
+            if el.has_attr('disabled') or id(el) in seen:
+                continue
+            seen.add(id(el))
+            controls.append(el)
+
+    if controls:
+        return controls
+
+    # Compatibility fallback for older forms that explicitly name court_id.
     for el in form.find_all(['select', 'input']):
         if el.has_attr('disabled'):
             continue
         typ = (el.get('type') or '').lower()
         if el.name == 'input' and typ not in ('radio', 'hidden'):
             continue
-        desc = _control_label(form, el)
-        option_text = ''
-        if el.name == 'select':
-            option_text = ' '.join(clean(o.get_text(' ', strip=True)) for o in el.find_all('option'))
-        hay = clean(desc + ' ' + option_text)
-        field_name = (el.get('name') or '') + ' ' + (el.get('id') or '')
-        if (re.search(r'court', hay, re.I)
-                or re.search(r'court[_\- ]?id', field_name, re.I)
-                or re.search(r'reservable[_\- ]?id', field_name, re.I)):
+        field_name = clean((el.get('name') or '') + ' ' + (el.get('id') or ''))
+        if re.search(r'court[_\- ]?id', field_name, re.I):
             controls.append(el)
     return controls
 
 
+def _input_court_label(form, el):
+    candidates = []
+    if el.get('id'):
+        lab = form.find('label', attrs={'for': el.get('id')})
+        if lab:
+            candidates.append(clean(lab.get_text(' ', strip=True)))
+    parent_label = el.find_parent('label')
+    if parent_label:
+        candidates.append(clean(parent_label.get_text(' ', strip=True)))
+    semantic = el.find_parent(attrs={'data-role': 'court-selection'})
+    if semantic:
+        candidates.append(clean(semantic.get_text(' ', strip=True)))
+    parent = el.find_parent(['li', 'article', 'div', 'td'])
+    if parent:
+        candidates.append(clean(parent.get_text(' ', strip=True)))
+    candidates.append(_control_label(form, el))
+
+    for raw in candidates:
+        name = _court_name_from_text(raw, el.get('value', ''))
+        if name:
+            return name
+    return ''
+
+
 def _extract_courts(form):
     courts = []
-    seen = set()
+    seen_values = set()
     for el in _court_controls(form):
         if el.name == 'select':
             for opt in el.find_all('option'):
-                val = opt.get('value')
-                label = clean(opt.get_text(' ', strip=True))
-                if not val or opt.has_attr('disabled') or not label:
+                val = str(opt.get('value') or '')
+                if not val or opt.has_attr('disabled') or val in seen_values:
                     continue
-                if re.search(r'choose|select|please', label, re.I) and not re.search(r'court\s*\d', label, re.I):
+                label = _court_name_from_text(opt.get_text(' ', strip=True), val)
+                if not label:
                     continue
-                key = (str(val), label.lower())
-                if key not in seen:
-                    seen.add(key)
-                    courts.append({'id': str(val), 'name': label})
+                if re.search(r'choose|select|please', label, re.I) and not re.search(r'court', label, re.I):
+                    continue
+                seen_values.add(val)
+                courts.append({'id': val, 'name': label})
         else:
-            val = el.get('value')
-            if not val:
+            val = str(el.get('value') or '')
+            if not val or val in seen_values:
                 continue
-            label = ''
-            if el.get('id'):
-                lab = form.find('label', attrs={'for': el.get('id')})
-                if lab:
-                    label = clean(lab.get_text(' ', strip=True))
-            if not label:
-                parent = el.find_parent('label') or el.parent
-                label = clean(parent.get_text(' ', strip=True)) if parent else ''
-            if not label:
-                label = _control_label(form, el)
+            label = _input_court_label(form, el)
             if not label:
                 continue
-            key = (str(val), label.lower())
-            if key not in seen:
-                seen.add(key)
-                courts.append({'id': str(val), 'name': label})
+            seen_values.add(val)
+            courts.append({'id': val, 'name': label})
     return courts
 
 
@@ -551,6 +618,7 @@ def court_options(req):
         )
 
     courts = _extract_courts(form)
+    print(f'Court options facility={facility_id} time={selected_time}: {courts}', flush=True)
     if not courts:
         controls = []
         for el in form.find_all(['select', 'input'])[:40]:
@@ -595,15 +663,8 @@ def set_fields(form, slot):
                 break
         else:
             val = str(el.get('value') or '')
-            label = ''
-            if el.get('id'):
-                lab = form.find('label', attrs={'for': el.get('id')})
-                if lab:
-                    label = clean(lab.get_text(' ', strip=True))
-            if not label:
-                parent = el.find_parent('label') or el.parent
-                label = clean(parent.get_text(' ', strip=True)) if parent else ''
-            if val == wanted_id or (wanted_name and label.lower() == wanted_name.lower()):
+            label = _input_court_label(form, el)
+            if val == wanted_id or (wanted_name and label and label.lower() == wanted_name.lower()):
                 out[name] = val
                 matched_court = True
                 break
