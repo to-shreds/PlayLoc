@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - scripts/add_specific_courts.py
+      - .github/workflows/add-specific-courts.yml
 permissions:
   contents: write
 jobs:
