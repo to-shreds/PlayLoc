@@ -17,14 +17,15 @@ jobs:
       - name: Verify
         run: |
           python -m py_compile playlocal_server.py
-          node --check <(python - <<'PY'
+          python - <<'PY'
           import re
           from pathlib import Path
           s=Path('index.html').read_text()
           m=re.search(r'<script>(.*)</script>',s,re.S)
-          print(m.group(1) if m else '')
+          assert m
+          Path('/tmp/courtflow.js').write_text(m.group(1))
           PY
-          )
+          node --check /tmp/courtflow.js
       - name: Commit
         run: |
           git config user.name github-actions[bot]
