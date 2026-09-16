@@ -28,7 +28,7 @@ jobs:
           assert 'configured_server_accounts' in s
           assert 'site_login' in s
           assert 'COURTFLOW_SITE_PASSWORD' in s
-          assert 'PLAYLOCAL_ACCOUNT_1_USERNAME' in s
+          assert "PLAYLOCAL_ACCOUNT_{i}_USERNAME" in s
           assert 'siteGate' in h
           assert 'Server-managed PlayLocal accounts loaded.' in h
           m=re.search(r'<script>(.*)</script>',h,re.S)
