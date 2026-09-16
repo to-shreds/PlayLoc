@@ -328,6 +328,43 @@ def history(req):
         'reservations': rows,
     }
 
+def court_options(req):
+    s = get_session(req['sessionToken'], req['accountId'])
+    facility_id = str(req.get('facilityId') or '')
+    if not facility_id:
+        raise ApiError('COURT_OPTIONS', 'A facility is required.')
+    p = browser_get(s, f"{BASE}/facilities/{facility_id}/reservations/new?sport=tennis", referer=BASE + '/facilities', retry_403=True)
+    if urlparse(p.url).path == '/sign_in':
+        raise ApiError('AUTH_REJECTED', 'PlayLocal session expired.', 401, True)
+    p.raise_for_status()
+    d = soup(p.text)
+    form = next((f for f in d.find_all('form') if re.search(r'reservation|booking', (f.get('action') or '') + ' ' + clean(f.get_text(' ', strip=True)), re.I)), None)
+    if not form:
+        raise ApiError('UPSTREAM_CHANGED', 'PlayLocal reservation form was not found.', 502)
+    selects = []
+    for el in form.find_all('select'):
+        desc = ' '.join(filter(None, [el.get('name'), el.get('id'), el.get('aria-label')])).lower()
+        if 'court' in desc:
+            selects.append(el)
+    if not selects:
+        raise ApiError('UPSTREAM_CHANGED', 'PlayLocal court selector was not found.', 502)
+    courts = []
+    seen = set()
+    for el in selects:
+        for opt in el.find_all('option'):
+            val = opt.get('value')
+            label = clean(opt.get_text(' ', strip=True))
+            if not val or opt.has_attr('disabled') or not label:
+                continue
+            key = (str(val), label)
+            if key in seen:
+                continue
+            seen.add(key)
+            courts.append({'id': str(val), 'name': label})
+    if not courts:
+        raise ApiError('NO_COURTS', 'PlayLocal did not expose any selectable courts for this facility.', 409, True)
+    return {'facilityId': facility_id, 'courts': courts}
+
 def set_fields(form, slot):
     out = {}
     hour = slot['start'] // 60
@@ -350,13 +387,14 @@ def set_fields(form, slot):
                 out[name] = f'{hour % 12 or 12}:00 {"PM" if hour >= 12 else "AM"}'
         elif 'court' in desc and el.name == 'select':
             opts = [x for x in el.find_all('option') if x.get('value') and not x.has_attr('disabled')]
-            option = None
-            if num:
-                option = next((x for x in opts if re.search(rf'\bCourt\s*{num.group(1)}\b', clean(x.text), re.I)), None)
-            if option is None and opts:
-                option = opts[0]
-            if option:
-                out[name] = option.get('value', '')
+            wanted_id = str(slot.get('courtId') or '')
+            wanted_name = clean(slot.get('courtName') or '')
+            option = next((x for x in opts if str(x.get('value')) == wanted_id), None)
+            if option is None and wanted_name:
+                option = next((x for x in opts if clean(x.get_text(' ', strip=True)).lower() == wanted_name.lower()), None)
+            if option is None:
+                raise ApiError('COURT_UNAVAILABLE', f'PlayLocal does not offer the selected court ({wanted_name or wanted_id}) on the reservation form.', 409, True)
+            out[name] = option.get('value', '')
         elif typ == 'checkbox' and (el.has_attr('required') or re.search(r'term|policy|agree|accept', desc)):
             out[name] = el.get('value') or '1'
     return out
@@ -372,7 +410,7 @@ def book(req):
         'date': slot['date'], 'sport': 'tennis', 'start': slot['start'], 'end': slot['end'],
         'facilityId': slot['facilityId'],
     }, sess=s)
-    if not any(x['available'] and x['start'] == slot['start'] and x['courtId'] == slot['courtId'] for x in snap['slots']):
+    if not any(x['available'] and x['start'] == slot['start'] for x in snap['slots']):
         raise ApiError('SLOT_UNAVAILABLE', 'PlayLocal no longer shows that slot as available.', 409, True)
     p = browser_get(s, f"{BASE}/facilities/{slot['facilityId']}/reservations/new?sport=tennis", referer=BASE + '/facilities', retry_403=True)
     if urlparse(p.url).path == '/sign_in':
@@ -413,6 +451,8 @@ def dispatch(req):
         return availability(req.get('query') or {}, sess=sess)
     if action == 'history':
         return history(req)
+    if action == 'court_options':
+        return court_options(req)
     if action == 'book':
         return book(req)
     raise ApiError('ACTION', 'Unknown adapter action.')
