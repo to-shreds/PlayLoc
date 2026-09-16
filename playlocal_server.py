@@ -167,8 +167,14 @@ def parse_facilities_page(page, q, wanted, start, end, facilities, slots):
         price = int(round(float(price_match.group(1)) * 100)) if price_match else 0
         reservable = box.select_one('[data-role="reservable-number"]')
         reservable_count = int(clean(reservable.get_text(strip=True))) if reservable and clean(reservable.get_text(strip=True)).isdigit() else 1
+        reserve_link = box.find('a', href=re.compile(r'/facilities/[^/]+/reservations/new'))
+        reservation_href = reserve_link.get('href', '') if reserve_link else ''
         courts = [{'id': f'{fid}:any', 'name': 'Any available court'}]
-        facilities[fid] = {'id': fid, 'name': name, 'courts': courts, 'reservableCourtCount': reservable_count}
+        facilities[fid] = {
+            'id': fid, 'name': name, 'courts': courts,
+            'reservableCourtCount': reservable_count,
+            'reservationHref': reservation_href,
+        }
         selector = box.select_one('[data-role="reservation-selector"]')
         if not selector:
             continue
@@ -435,11 +441,38 @@ def court_options(req):
     facility_id = str(req.get('facilityId') or '')
     if not facility_id:
         raise ApiError('COURT_OPTIONS', 'A facility is required.')
-    params = {'sport': 'tennis'}
-    if req.get('date'):
-        params['date'] = req.get('date')
-    url = f"{BASE}/facilities/{facility_id}/reservations/new"
-    p = browser_get(s, url, params=params, referer=BASE + '/facilities', retry_403=True)
+    href = str(req.get('reservationHref') or '')
+    if href:
+        parsed = urlparse(urljoin(BASE, href))
+        if parsed.netloc not in ('www.playlocal.com', 'playlocal.com') or '/reservations/new' not in parsed.path:
+            raise ApiError('COURT_OPTIONS', 'Invalid PlayLocal reservation link.', 400, True)
+        url = urljoin(BASE, href)
+        p = browser_get(s, url, referer=BASE + '/facilities', retry_403=True)
+    else:
+        # Fallback: re-run the same live search and recover PlayLocal's exact Reserve href.
+        q = {
+            'date': req.get('date', ''),
+            'location': req.get('location', ''),
+            'sport': 'tennis',
+            'start': int(req.get('start', 0) or 0),
+            'end': int(req.get('end', 1440) or 1440),
+            'facilityId': facility_id,
+        }
+        found_href = ''
+        for sp in search_pages(q, sess=s):
+            sd = soup(sp.text)
+            for box in sd.select('li[data-role="facility"]'):
+                bid = str(box.get('data-id') or '')
+                link = box.find('a', href=re.compile(r'/facilities/[^/]+/reservations/new'))
+                if bid == facility_id and link:
+                    found_href = link.get('href', '')
+                    break
+            if found_href:
+                break
+        if not found_href:
+            raise ApiError('RESERVATION_LINK_NOT_FOUND', 'PlayLocal did not expose a Reserve link for the selected facility/date/time.', 409, True)
+        url = urljoin(BASE, found_href)
+        p = browser_get(s, url, referer=BASE + '/facilities', retry_403=True)
     if urlparse(p.url).path == '/sign_in':
         raise ApiError('AUTH_REJECTED', 'PlayLocal session expired.', 401, True)
     p.raise_for_status()
@@ -531,7 +564,15 @@ def book(req):
     }, sess=s)
     if not any(x['available'] and x['start'] == slot['start'] for x in snap['slots']):
         raise ApiError('SLOT_UNAVAILABLE', 'PlayLocal no longer shows that slot as available.', 409, True)
-    p = browser_get(s, f"{BASE}/facilities/{slot['facilityId']}/reservations/new?sport=tennis", referer=BASE + '/facilities', retry_403=True)
+    href = str(slot.get('reservationHref') or '')
+    if href:
+        parsed = urlparse(urljoin(BASE, href))
+        if parsed.netloc not in ('www.playlocal.com', 'playlocal.com') or '/reservations/new' not in parsed.path:
+            raise ApiError('BOOKING_LINK', 'Invalid PlayLocal reservation link.', 400, True)
+        booking_url = urljoin(BASE, href)
+    else:
+        booking_url = f"{BASE}/facilities/{slot['facilityId']}/reservations/new?sport=tennis"
+    p = browser_get(s, booking_url, referer=BASE + '/facilities', retry_403=True)
     if urlparse(p.url).path == '/sign_in':
         raise ApiError('AUTH_REJECTED', 'PlayLocal session expired.', 401, True)
     p.raise_for_status()
