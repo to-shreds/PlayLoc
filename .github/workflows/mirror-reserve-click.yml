@@ -1,0 +1,38 @@
+name: Mirror PlayLocal Reserve click
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/mirror-reserve-click.yml
+      - scripts/mirror_reserve_click.py
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply patch
+        run: python scripts/mirror_reserve_click.py
+      - name: Verify
+        run: |
+          python -m py_compile playlocal_server.py
+          python - <<'PY'
+          import re
+          from pathlib import Path
+          py=Path('playlocal_server.py').read_text()
+          assert 'reservationReferer' in py
+          assert 'found_referer = sp.url' in py
+          s=Path('index.html').read_text()
+          m=re.search(r'<script>(.*)</script>',s,re.S); assert m
+          Path('/tmp/courtflow.js').write_text(m.group(1))
+          assert 'reservationReferer' in s
+          PY
+          node --check /tmp/courtflow.js
+      - name: Commit
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add playlocal_server.py index.html
+          git commit -m "Mirror PlayLocal Reserve click context"
+          git push
