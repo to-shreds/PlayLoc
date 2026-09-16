@@ -18,10 +18,13 @@ jobs:
           from playlocal_server import browser_session, browser_get, soup, BASE
           from urllib.parse import urljoin
           s=browser_session()
-          r=browser_get(s, BASE+'/facilities', params={
-            'search[date]':'2026-09-25','search[location]':'Boston','search[sport]':'tennis','search[time]':'early_morning','commit':'Find Courts'
-          }, referer=BASE+'/facilities')
+          print('COOKIES_INITIAL', [(c.name, len(c.value)) for c in s.cookies.jar])
+          home=browser_get(s, BASE+'/', retry_403=False)
+          print('COOKIES_AFTER_HOME', [(c.name, len(c.value)) for c in s.cookies.jar])
+          params={'search[date]':'2026-09-25','search[location]':'Boston','search[sport]':'tennis','search[time]':'early_morning','commit':'Find Courts'}
+          r=browser_get(s, BASE+'/facilities', params=params, referer=BASE+'/facilities')
           print('PAGE', r.url, r.status_code)
+          print('COOKIES_AFTER_SEARCH', [(c.name, len(c.value)) for c in s.cookies.jar])
           d=soup(r.text)
           srcs=[]
           for x in d.find_all('script', src=True):
@@ -35,16 +38,23 @@ jobs:
               txt=rr.text
             except Exception as e:
               print('SCRIPT_ERR',u,e); continue
-            hits=[]
-            low=txt.lower()
+            hits=[]; low=txt.lower()
             for n in needles:
               pos=low.find(n.lower())
-              if pos>=0:
-                hits.append((n, txt[max(0,pos-700):pos+1800].replace('\n',' ')[:2500]))
+              if pos>=0: hits.append((n, txt[max(0,pos-700):pos+1800].replace('\n',' ')[:2500]))
             if hits:
               print('\nASSET',u,'STATUS',rr.status_code,'LEN',len(txt))
-              for n,snip in hits:
-                print('HIT',n, snip)
+              for n,snip in hits: print('HIT',n,snip)
           for box in d.select('li[data-role="facility"]'):
             if str(box.get('data-id'))=='22':
               print('\nWEST_ROXBURY_CARD',str(box)[:14000])
+          href='/facilities/22/reservations/new?sport=tennis'
+          variants=[
+            href,
+            href+'&date=2026-09-25',
+            href+'&search%5Bdate%5D=2026-09-25',
+            href+'&search%5Bdate%5D=2026-09-25&search%5Btime%5D=early_morning&search%5Blocation%5D=Boston',
+          ]
+          for u in variants:
+            rr=browser_get(s, BASE+u, referer=r.url, retry_403=False)
+            print('TRY',u,'=>',rr.status_code,rr.url,'HISTORY',[(x.status_code,x.headers.get('location')) for x in rr.history])
