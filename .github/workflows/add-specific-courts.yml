@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - .github/workflows/add-specific-courts.yml
+      - scripts/add_specific_courts.py
 permissions:
   contents: write
 jobs:
@@ -11,121 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Patch backend and frontend
-        shell: python
-        run: |
-          from pathlib import Path
-          import re
-
-          p=Path('playlocal_server.py')
-          s=p.read_text()
-
-          marker='def set_fields(form, slot):\n'
-          if 'def court_options(req):' not in s:
-              insert='''def court_options(req):
-              s = get_session(req['sessionToken'], req['accountId'])
-              facility_id = str(req.get('facilityId') or '')
-              if not facility_id:
-                  raise ApiError('COURT_OPTIONS', 'A facility is required.')
-              p = browser_get(s, f"{BASE}/facilities/{facility_id}/reservations/new?sport=tennis", referer=BASE + '/facilities', retry_403=True)
-              if urlparse(p.url).path == '/sign_in':
-                  raise ApiError('AUTH_REJECTED', 'PlayLocal session expired.', 401, True)
-              p.raise_for_status()
-              d = soup(p.text)
-              form = next((f for f in d.find_all('form') if re.search(r'reservation|booking', (f.get('action') or '') + ' ' + clean(f.get_text(' ', strip=True)), re.I)), None)
-              if not form:
-                  raise ApiError('UPSTREAM_CHANGED', 'PlayLocal reservation form was not found.', 502)
-              selects=[]
-              for el in form.find_all('select'):
-                  desc=' '.join(filter(None,[el.get('name'),el.get('id'),el.get('aria-label')])).lower()
-                  if 'court' in desc:
-                      selects.append(el)
-              if not selects:
-                  raise ApiError('UPSTREAM_CHANGED', 'PlayLocal court selector was not found.', 502)
-              courts=[]
-              seen=set()
-              for el in selects:
-                  for opt in el.find_all('option'):
-                      val=opt.get('value')
-                      label=clean(opt.get_text(' ',strip=True))
-                      if not val or opt.has_attr('disabled') or not label:
-                          continue
-                      key=(str(val),label)
-                      if key in seen:
-                          continue
-                      seen.add(key)
-                      courts.append({'id':str(val),'name':label})
-              if not courts:
-                  raise ApiError('NO_COURTS', 'PlayLocal did not expose any selectable courts for this facility.', 409, True)
-              return {'facilityId':facility_id,'courts':courts}
-
-          '''
-              insert='\n'.join(line[10:] if line.startswith('          ') else line for line in insert.splitlines())+'\n'
-              s=s.replace(marker,insert+marker,1)
-
-          old="""        elif 'court' in desc and el.name == 'select':
-            opts = [x for x in el.find_all('option') if x.get('value') and not x.has_attr('disabled')]
-            option = None
-            if num:
-                option = next((x for x in opts if re.search(rf'\\bCourt\\s*{num.group(1)}\\b', clean(x.text), re.I)), None)
-            if option is None and opts:
-                option = opts[0]
-            if option:
-                out[name] = option.get('value', '')
-"""
-          new="""        elif 'court' in desc and el.name == 'select':
-            opts = [x for x in el.find_all('option') if x.get('value') and not x.has_attr('disabled')]
-            wanted_id = str(slot.get('courtId') or '')
-            wanted_name = clean(slot.get('courtName') or '')
-            option = next((x for x in opts if str(x.get('value')) == wanted_id), None)
-            if option is None and wanted_name:
-                option = next((x for x in opts if clean(x.get_text(' ', strip=True)).lower() == wanted_name.lower()), None)
-            if option is None:
-                raise ApiError('COURT_UNAVAILABLE', f'PlayLocal does not offer the selected court ({wanted_name or wanted_id}) on the reservation form.', 409, True)
-            out[name] = option.get('value', '')
-"""
-          if old not in s:
-              raise SystemExit('court select block not found')
-          s=s.replace(old,new,1)
-
-          s=s.replace("if not any(x['available'] and x['start'] == slot['start'] and x['courtId'] == slot['courtId'] for x in snap['slots']):",
-                      "if not any(x['available'] and x['start'] == slot['start'] for x in snap['slots']):",1)
-
-          dispatch_old="""    if action == 'history':
-        return history(req)
-    if action == 'book':
-        return book(req)
-"""
-          dispatch_new="""    if action == 'history':
-        return history(req)
-    if action == 'court_options':
-        return court_options(req)
-    if action == 'book':
-        return book(req)
-"""
-          if dispatch_old not in s:
-              raise SystemExit('dispatch block not found')
-          s=s.replace(dispatch_old,dispatch_new,1)
-          p.write_text(s)
-
-          p=Path('index.html')
-          h=p.read_text()
-          old="""function renderFacilities(){ $('facility').innerHTML=state.facilities.map(f=>`<option value=\"${esc(f.id)}\">${esc(f.name)}</option>`).join(''); updateCourts() }function updateCourts(){let f=state.facilities.find(x=>String(x.id)===$('facility').value);$('court').innerHTML=(f?.courts||[]).map(c=>`<option value=\"${esc(c.id)}\">${esc(c.name)}</option>`).join('')}
-"""
-          new="""function renderFacilities(){ $('facility').innerHTML=state.facilities.map(f=>`<option value=\"${esc(f.id)}\">${esc(f.name)}</option>`).join(''); loadCourts() }
-async function loadCourts(){let fid=$('facility').value;if(!fid){$('court').innerHTML='';return}if(state.mode!=='live'){let f=state.facilities.find(x=>String(x.id)===fid);$('court').innerHTML=(f?.courts||[]).map(c=>`<option value=\"${esc(c.id)}\">${esc(c.name)}</option>`).join('');return}if(!state.accounts.length){$('court').innerHTML='<option value=\"\">Add an account first</option>';return}let a=state.accounts[0];try{$('court').innerHTML='<option value=\"\">Loading courts...</option>';let ss=await auth(a);let d=await rpc('court_options',{accountId:a.id,sessionToken:ss.sessionToken,facilityId:fid,date:$('pdate').value});$('court').innerHTML=(d.courts||[]).map(c=>`<option value=\"${esc(c.id)}\">${esc(c.name)}</option>`).join('');log(`Loaded ${(d.courts||[]).length} real court option${(d.courts||[]).length===1?'':'s'} from PlayLocal.`)}catch(e){$('court').innerHTML='<option value=\"\">Could not load courts</option>';log('Court lookup failed: '+e.message)}}
-"""
-          if old not in h:
-              raise SystemExit('renderFacilities block not found')
-          h=h.replace(old,new,1)
-          h=h.replace("$('facility').onchange=updateCourts;","$('facility').onchange=loadCourts;$('pdate').onchange=loadCourts;",1)
-
-          oldplan="""let q={location,sport:'tennis',date:$('pdate').value,start:+$('pstart').value,end:+$('pend').value,facilityId};let d=await availability(q);state.facilities=d.facilities;state.slots=d.slots;let limit=+$('limit').value,usage=Object.fromEntries(state.accounts.map(a=>[a.id,0])),rows=[];for(let tt=q.start;tt<q.end;tt+=60){let s=d.slots.find(x=>String(x.courtId)===String(court)&&x.start===tt);if(!s||!s.available){rows.push({status:'unavailable',start:tt,label:'Unavailable'});continue}let a=state.accounts.find(a=>usage[a.id]+60<=limit);if(!a){rows.push({status:'limit',start:tt,label:'Account limit reached'});continue}usage[a.id]+=60;rows.push({status:'planned',start:tt,slot:s,account:a,label:a.name})}"""
-          newplan="""let q={location,sport:'tennis',date:$('pdate').value,start:+$('pstart').value,end:+$('pend').value,facilityId};if(!court)throw Error('Choose a specific court.');let courtName=$('court').selectedOptions[0]?.textContent||court;let d=await availability(q);state.facilities=d.facilities;state.slots=d.slots;let limit=+$('limit').value,usage=Object.fromEntries(state.accounts.map(a=>[a.id,0])),rows=[];for(let tt=q.start;tt<q.end;tt+=60){let base=d.slots.find(x=>x.start===tt);if(!base||!base.available){rows.push({status:'unavailable',start:tt,label:'Unavailable'});continue}let a=state.accounts.find(a=>usage[a.id]+60<=limit);if(!a){rows.push({status:'limit',start:tt,label:'Account limit reached'});continue}usage[a.id]+=60;let s={...base,courtId:court,courtName};rows.push({status:'planned',start:tt,slot:s,account:a,label:a.name})}"""
-          if oldplan not in h:
-              raise SystemExit('planner body not found')
-          h=h.replace(oldplan,newplan,1)
-          p.write_text(h)
+      - name: Apply patch
+        run: python scripts/add_specific_courts.py
       - name: Verify
         run: |
           python -m py_compile playlocal_server.py
@@ -136,9 +23,9 @@ async function loadCourts(){let fid=$('facility').value;if(!fid){$('court').inne
           m=re.search(r'<script>(.*)</script>',s,re.S)
           assert m
           Path('/tmp/courtflow.js').write_text(m.group(1))
-          assert "court_options" in s
-          assert "Choose a specific court" in s
-          assert "COURT_UNAVAILABLE" in Path('playlocal_server.py').read_text()
+          assert 'court_options' in s
+          assert 'Choose a specific court' in s
+          assert 'COURT_UNAVAILABLE' in Path('playlocal_server.py').read_text()
           PY
           node --check /tmp/courtflow.js
       - name: Commit
