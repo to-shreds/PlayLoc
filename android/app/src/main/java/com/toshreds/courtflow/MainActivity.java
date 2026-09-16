@@ -192,6 +192,9 @@ public class MainActivity extends Activity {
     private final class BookingClient extends WebViewClient {
         @Override
         public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+            // Allow verification/challenge iframes and other subresources to load normally.
+            // Restrict only top-level navigation away from PlayLocal.
+            if (!request.isForMainFrame()) return false;
             String url = request.getUrl().toString();
             return !url.startsWith("https://www.playlocal.com/") && !url.startsWith("https://playlocal.com/");
         }
