@@ -15,14 +15,10 @@ jobs:
         shell: python
         run: |
           from pathlib import Path
-          import re
-          p=Path('playlocal_server.py')
-          s=p.read_text()
-          new=r'''def parse_facilities_page(page, q, wanted, start, end, facilities, slots):
+          import re, textwrap
+          p=Path('playlocal_server.py'); s=p.read_text()
+          new=textwrap.dedent(r'''def parse_facilities_page(page, q, wanted, start, end, facilities, slots):
               d = soup(page.text)
-              # PlayLocal's search results identify each result explicitly with
-              # li[data-role="facility"]. Parse that container rather than the
-              # Reserve link's nearest div, which loses the facility heading.
               for box in d.select('li[data-role="facility"]'):
                   fid = str(box.get('data-id') or '')
                   if not fid:
@@ -48,31 +44,22 @@ jobs:
                   facilities[fid] = {'id': fid, 'name': name, 'courts': courts}
                   selector = box.select_one('[data-role="reservation-selector"]')
                   selector_text = clean(selector.get_text(' ', strip=True)) if selector else ''
-                  # Current markup renders the entire sequence as e.g.
-                  # "4pm 5pm Not Available 6pm ...". Parse the sequence rather
-                  # than requiring each time to occupy its own text node.
                   pat = re.compile(r'(\d{1,2})(?::00)?\s*(am|pm)(?:\s+(Not Available|Unavailable|Closed|Full|Booked))?', re.I)
                   for mt in pat.finditer(selector_text):
                       h = int(mt.group(1)) % 12 + (12 if mt.group(2).lower() == 'pm' else 0)
                       st = h * 60
-                      if st < start or st >= end:
-                          continue
+                      if st < start or st >= end: continue
                       avail = not bool(mt.group(3))
                       for c in courts:
                           key = (fid, c['id'], st)
-                          row = {
-                              'slotId': f'{fid}:{c["id"]}:{q.get("date")}:{st}',
-                              'facilityId': fid, 'facilityName': name,
-                              'courtId': c['id'], 'courtName': c['name'],
-                              'date': q.get('date'), 'start': st, 'end': st + 60,
-                              'available': avail, 'priceCents': price,
-                          }
-                          if key not in slots or avail:
-                              slots[key] = row
-          '''
-          new='\n'.join(line[12:] if line.startswith('            ') else line for line in new.splitlines())+'\n'
+                          row = {'slotId': f'{fid}:{c["id"]}:{q.get("date")}:{st}', 'facilityId': fid,
+                                 'facilityName': name, 'courtId': c['id'], 'courtName': c['name'],
+                                 'date': q.get('date'), 'start': st, 'end': st + 60,
+                                 'available': avail, 'priceCents': price}
+                          if key not in slots or avail: slots[key] = row
+          ''')
           pattern=r'def parse_facilities_page\(page, q, wanted, start, end, facilities, slots\):.*?(?=\ndef availability\()'
-          out,n=re.subn(pattern,new,s,flags=re.S)
+          out,n=re.subn(pattern,lambda _:new,s,flags=re.S)
           if n!=1: raise SystemExit(f'Expected one parser function, replaced {n}')
           p.write_text(out)
       - name: Verify syntax
