@@ -1,0 +1,28 @@
+name: Verify PlayLocal Reserve href extraction
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/verify-reservation-href.yml
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install -r requirements.txt >/dev/null
+      - name: Verify West Roxbury reserve target
+        run: |
+          python - <<'PY'
+          from playlocal_server import availability
+          q={'date':'2026-09-25','location':'Wellesley MA','sport':'tennis','start':420,'end':1200}
+          d=availability(q)
+          matches=[f for f in d['facilities'] if 'West Roxbury High School' in f.get('name','')]
+          print('MATCHES', matches)
+          assert matches, 'West Roxbury High School not returned by live PlayLocal search'
+          f=matches[0]
+          assert f.get('reservationHref'), f'No reservationHref on West Roxbury facility card: {f}'
+          assert '/reservations/new' in f['reservationHref'], f['reservationHref']
+          print('VERIFIED_RESERVATION_HREF', f['reservationHref'])
+          PY
