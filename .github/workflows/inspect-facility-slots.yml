@@ -1,0 +1,32 @@
+name: Inspect PlayLocal facility slot markup
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/inspect-facility-slots.yml
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - run: pip install curl_cffi beautifulsoup4
+      - name: Inspect first facility card
+        shell: python
+        run: |
+          from curl_cffi import requests
+          from bs4 import BeautifulSoup
+          import re
+          s=requests.Session(impersonate='chrome')
+          s.get('https://www.playlocal.com/')
+          p={'search[date]':'2026-09-25','search[location]':'Boston','search[sport]':'tennis','search[time]':'morning','commit':'Find Courts'}
+          r=s.get('https://www.playlocal.com/facilities',params=p,headers={'Referer':'https://www.playlocal.com/facilities'})
+          print('STATUS',r.status_code,r.url)
+          d=BeautifulSoup(r.text,'html.parser')
+          boxes=d.select('li[data-role="facility"]')
+          print('FACILITIES',len(boxes))
+          for box in boxes[:2]:
+            print('\n=== FACILITY',box.get('data-id'),'===')
+            print('TEXT',box.get_text(' ',strip=True)[:1500])
+            print('HTML',str(box)[:12000])
+            print('CONTROLS')
+            for x in box.find_all(['input','select','option','button','a','form']):
+              print(x.name,dict(x.attrs),repr(x.get_text(' ',strip=True)[:200]))
