@@ -1,0 +1,44 @@
+name: Apply PlayLocal Reserve selection repair
+on:
+  push:
+    paths:
+      - .github/workflows/fix-reserve-selection-v2.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply patch
+        run: python scripts/apply_reserve_selection_fix.py
+      - name: Verify backend
+        run: |
+          python -m py_compile playlocal_server.py
+          python - <<'PY'
+          import playlocal_server as p
+          u=p._reservation_click_url('/facilities/22/reservations/new?sport=tennis','7am','2026-09-25')
+          assert u == 'https://www.playlocal.com/facilities/22/reservations/new?sport=tennis&time=7am&date=2026-09-25', u
+          assert p._slot_time_minutes('7am') == 420
+          assert p._slot_time_minutes('12pm') == 720
+          PY
+      - name: Verify frontend
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          h=Path('index.html').read_text()
+          assert "$('pstart').onchange=loadCourts" in h
+          assert "Court check ${t(tt)}" in h
+          m=re.search(r'<script>(.*)</script>',h,re.S)
+          Path('/tmp/courtflow.js').write_text(m.group(1))
+          PY
+          node --check /tmp/courtflow.js
+      - name: Commit
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add playlocal_server.py index.html CourtFlow.html
+          git commit -m "Mirror PlayLocal Reserve time and date selection"
+          git push
