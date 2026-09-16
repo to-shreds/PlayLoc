@@ -4,6 +4,7 @@
   "private": true,
   "type": "commonjs",
   "scripts": {
+    "postinstall": "node selftest.js",
     "start": "node server.js"
   },
   "dependencies": {
