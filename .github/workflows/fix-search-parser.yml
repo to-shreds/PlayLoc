@@ -1,0 +1,105 @@
+name: Fix PlayLocal search parser
+
+on:
+  push:
+    paths:
+      - .github/workflows/fix-search-parser.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Replace facility parser with current PlayLocal markup parser
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('playlocal_server.py')
+          src = p.read_text()
+          start = src.index('def parse_facilities_page(')
+          end = src.index('\ndef availability(', start)
+          new = r'''def parse_facilities_page(page, q, wanted, start, end, facilities, slots):
+              d = soup(page.text)
+              for box in d.select('[data-role="facility"]'):
+                  fid = str(box.get('data-id') or '').strip()
+                  if not fid:
+                      link = box.find('a', href=re.compile(r'/facilities/[^/]+/reservations/new'))
+                      m = re.search(r'/facilities/([^/]+)/reservations/new', link.get('href', '') if link else '')
+                      if not m:
+                          continue
+                      fid = m.group(1)
+                  if wanted and fid != wanted:
+                      continue
+
+                  heading = box.find(['h1', 'h2', 'h3', 'h4', 'h5'])
+                  name = clean(heading.get_text(' ', strip=True)) if heading else 'Facility ' + fid
+                  address_node = box.find(attrs={'data-role': 'address'})
+                  address = clean(address_node.get_text(' ', strip=True)) if address_node else ''
+                  price_node = box.find(attrs={'data-role': 'price'})
+                  price_text = clean(price_node.get_text(' ', strip=True)) if price_node else clean(box.get_text(' ', strip=True))
+                  price_match = re.search(r'\$(\d+(?:\.\d{1,2})?)', price_text)
+                  price = int(round(float(price_match.group(1)) * 100)) if price_match else 0
+
+                  reservable_node = box.find(attrs={'data-role': 'reservable-number'})
+                  if reservable_node and clean(reservable_node.get_text(' ', strip=True)).isdigit():
+                      count = int(clean(reservable_node.get_text(' ', strip=True)))
+                  else:
+                      court_text_node = box.find(attrs={'data-role': 'courts'})
+                      court_text = clean(court_text_node.get_text(' ', strip=True)) if court_text_node else clean(box.get_text(' ', strip=True))
+                      court_match = re.search(r'\(\s*(\d+)\s+reservable', court_text, re.I)
+                      count = int(court_match.group(1)) if court_match else 1
+                  count = max(1, count)
+                  courts = [{'id': f'{fid}:court:{i}', 'name': f'Court {i}'} for i in range(1, count + 1)]
+                  facilities[fid] = {'id': fid, 'name': name, 'address': address, 'courts': courts}
+
+                  selector = box.find(attrs={'data-role': 'reservation-selector'}) or box
+                  selector_text = clean(selector.get_text(' ', strip=True))
+                  time_pattern = re.compile(
+                      r'\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b(?:\s+(Not Available|Unavailable|Closed|Full|Booked))?',
+                      re.I,
+                  )
+                  seen_times = set()
+                  for mt in time_pattern.finditer(selector_text):
+                      hour = int(mt.group(1)) % 12 + (12 if mt.group(3).lower() == 'pm' else 0)
+                      minute = int(mt.group(2) or 0)
+                      st = hour * 60 + minute
+                      if st in seen_times or st < start or st >= end:
+                          continue
+                      seen_times.add(st)
+                      avail = not bool(mt.group(4))
+                      for c in courts:
+                          key = (fid, c['id'], st)
+                          row = {
+                              'slotId': f'{fid}:{c["id"]}:{q.get("date")}:{st}',
+                              'facilityId': fid,
+                              'facilityName': name,
+                              'facilityAddress': address,
+                              'courtId': c['id'],
+                              'courtName': c['name'],
+                              'date': q.get('date'),
+                              'start': st,
+                              'end': st + 60,
+                              'available': avail,
+                              'priceCents': price,
+                          }
+                          if key not in slots or avail:
+                              slots[key] = row
+          '''
+          # Workflow YAML indentation becomes part of this literal. Normalize it.
+          import textwrap
+          new = textwrap.dedent(new)
+          p.write_text(src[:start] + new + src[end:])
+      - name: Verify parser syntax
+        run: python -m py_compile playlocal_server.py
+      - name: Commit parser fix
+        run: |
+          git config user.name "to-shreds"
+          git config user.email "jonathanjablon@gmail.com"
+          git add playlocal_server.py
+          git commit -m "Parse current PlayLocal facility cards"
+          git push origin main
