@@ -1,0 +1,45 @@
+name: Fix mobile flow and remote browser
+on:
+  push:
+    paths:
+      - 'scripts/fix_mobile_remote_browser.py'
+      - '.github/workflows/fix-mobile-remote-browser.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply repair
+        run: python scripts/fix_mobile_remote_browser.py
+      - name: Verify source
+        run: |
+          python -m py_compile playlocal_server.py
+          node --check browser_service/server.js
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          h=Path('index.html').read_text()
+          assert 'value="West Roxbury"' in h
+          assert 'Step 1 of 4' in h
+          assert 'browserRetry' in h
+          assert "Book ${planned} slots" in h
+          assert "browserRequest(`/session/${encodeURIComponent(rb.id)}/frame" in h
+          m=re.search(r'<script>(.*)</script>',h,re.S)
+          assert m
+          Path('/tmp/courtflow.js').write_text(m.group(1))
+          s=Path('browser_service/server.js').read_text()
+          assert 'async function launchBrowser()' in s
+          assert 'createBrowserContext' not in s
+          assert 'session.browser?.close()' in s
+          PY
+          node --check /tmp/courtflow.js
+      - name: Commit repair
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add index.html browser_service/server.js
+          git commit -m "Fix remote verification and simplify mobile booking flow"
+          git push
