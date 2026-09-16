@@ -1,0 +1,27 @@
+name: Backend upstream smoke
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - playlocal_server.py
+      - .github/workflows/backend-smoke.yml
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for Render and test PlayLocal upstream
+        shell: bash
+        run: |
+          set -e
+          for i in {1..12}; do
+            echo "Attempt $i"
+            if body=$(curl --fail --silent --show-error https://courtflow-playlocal.onrender.com/upstream); then
+              echo "$body"
+              python -c 'import json,sys; d=json.load(sys.stdin); assert d.get("ok") is True and d.get("status")==200' <<< "$body"
+              exit 0
+            fi
+            sleep 10
+          done
+          exit 1
