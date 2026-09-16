@@ -1,0 +1,26 @@
+name: Inspect PlayLocal reservable JS hooks
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/inspect-reservable-js.yml
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install -r requirements.txt >/dev/null
+      - name: Inspect application JS
+        shell: python
+        run: |
+          import os,sys,re
+          sys.path.insert(0,os.getcwd())
+          from playlocal_server import browser_session,browser_get,BASE
+          s=browser_session()
+          u='https://d34os8bs8ae6o7.cloudfront.net/assets/application-26f68a8051bbb4a9a5d3ea521106dc0d029b4fbdd96aa52d0f651bf51e9f6351.js'
+          t=browser_get(s,u,referer=BASE+'/facilities',retry_403=False).text
+          for needle in ['reservation_reservable_id','court-selection','reservable_id','/reservables','reservables/','reservation_start','reservation_date','start_time','starts_at']:
+            print('\nNEEDLE',needle)
+            for i,m in enumerate(re.finditer(re.escape(needle),t,re.I)):
+              if i>=20: break
+              p=m.start(); print('OCC',i, t[max(0,p-1200):p+2200].replace('\n',' ')[:3400])
