@@ -11,6 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install backend dependencies
+        run: pip install -r requirements.txt >/dev/null
       - name: Apply patch
         run: python scripts/apply_reserve_selection_fix.py
       - name: Verify backend
