@@ -452,8 +452,29 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_header('Content-Length', str(len(raw)))
             self.end_headers()
             self.wfile.write(raw)
-        else:
-            self.send_error(404)
+            return
+        if self.path == '/upstream':
+            try:
+                q = {'date': time.strftime('%Y-%m-%d'), 'location': 'Boston', 'sport': 'tennis', 'start': 960, 'end': 1200}
+                pages = search_pages(q)
+                payload = {'ok': True, 'status': pages[0].status_code if pages else None, 'pages': len(pages)}
+                status = 200
+            except ApiError as e:
+                payload = {'ok': False, 'code': e.code, 'message': e.message}
+                status = e.status
+            except Exception as e:
+                payload = {'ok': False, 'code': 'UPSTREAM_ERROR', 'message': str(e)}
+                status = 502
+            raw = json.dumps(payload).encode()
+            self.send_response(status)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Cache-Control', 'no-store')
+            self.cors()
+            self.send_header('Content-Length', str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+            return
+        self.send_error(404)
 
     def do_POST(self):
         if self.path != '/adapter':
