@@ -1,0 +1,37 @@
+name: Allow pre-form PlayLocal verification
+
+on:
+  push:
+    paths:
+      - 'scripts/allow_preform_verification.py'
+      - '.github/workflows/allow-preform-verification.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply pre-form verification patch
+        run: python scripts/allow_preform_verification.py
+      - name: Verify browser service source
+        run: |
+          node --check browser_service/server.js
+          python - <<'PY'
+          from pathlib import Path
+          s=Path('browser_service/server.js').read_text()
+          assert 'navigateReservation' in s
+          assert 'tryPrepareReservation' in s
+          assert "session.prepared" in s
+          assert 'prepareReservation(page, payload)' not in s
+          PY
+      - name: Commit pre-form verification support
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add browser_service/server.js
+          git commit -m "Let remote verification appear before reservation form"
+          git push
