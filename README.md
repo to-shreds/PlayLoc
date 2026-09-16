@@ -12,7 +12,7 @@ The live adapter URL is hard-wired into `index.html`:
 
 `https://courtflow-playlocal.onrender.com/adapter`
 
-Saved PlayLocal accounts persist in the browser on the device where they were entered. The frontend can search availability, plan account handoffs, make supported bookings, and load each saved account's current PlayLocal reservations through the Bookings tab when the upstream PlayLocal session is available.
+Saved PlayLocal accounts persist in the browser on the device where they were entered. The frontend can search availability, plan account handoffs, make supported bookings, and load each saved account's current PlayLocal reservations through the Bookings tab.
 
 ## Backend
 
@@ -22,13 +22,13 @@ The connector is deployed on Render at:
 
 `https://courtflow-playlocal.onrender.com`
 
-## Current upstream blocker
+## PlayLocal transport
 
-The hosted connector is currently blocked from actually talking to PlayLocal. PlayLocal returns HTTP 403 with a Cloudflare `Just a moment...` challenge to ordinary server-side HTTP clients. This was reproduced independently from both the Render service and a GitHub-hosted Actions runner, so it is not just a stale frontend error or a malformed Render URL.
+PlayLocal's Cloudflare layer rejects ordinary server-side HTTP clients with HTTP 403. The connector therefore uses a Chrome-compatible TLS/browser fingerprint through `curl_cffi`, while preserving separate cookies and authenticated sessions for each PlayLocal account.
 
-The connector now uses browser-like headers, cookies, referers, and account-authenticated sessions, but that does not solve the Cloudflare challenge because Python `requests` does not execute the browser challenge. The `/upstream` diagnostic endpoint and `.github/workflows/backend-smoke.yml` preserve this check.
+The Render startup probe now reaches PlayLocal search successfully with HTTP 200. The external GitHub Actions smoke test also requires the Render `/upstream` diagnostic to report `ok: true` and HTTP 200 before passing.
 
-As a result, the GitHub Pages interface and our adapter can reach each other, but live PlayLocal search, sign-in, history retrieval, and booking remain blocked until the PlayLocal interaction is moved to a transport that can establish a genuine browser session, such as a user-device/local browser bridge. Simulation mode remains available independently.
+This verifies the hosted connector's public search transport. Authentication, reservation-history parsing, and actual reservation creation still require live-account validation because no PlayLocal credentials are stored in the repository or available to automated CI.
 
 ## Local test
 
