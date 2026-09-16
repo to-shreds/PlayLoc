@@ -18,3 +18,13 @@ jobs:
           body=$(curl --fail --silent --show-error https://courtflow-playlocal.onrender.com/upstream)
           echo "$body"
           python -c 'import json,sys; d=json.load(sys.stdin); assert d.get("ok") is True and d.get("status")==200' <<< "$body"
+      - name: Verify live facility names and slots
+        shell: bash
+        run: |
+          set -e
+          body=$(curl --fail --silent --show-error \
+            -H 'Content-Type: application/json' \
+            --data '{"version":1,"action":"availability","query":{"location":"Boston","sport":"tennis","date":"2026-09-17","start":960,"end":1200}}' \
+            https://courtflow-playlocal.onrender.com/adapter)
+          echo "$body"
+          python -c 'import json,sys; d=json.load(sys.stdin); assert d.get("ok") is True; x=d["data"]; assert len(x["facilities"])>0; assert len(x["slots"])>0; assert any(s.get("available") for s in x["slots"]); assert all(f.get("name") and not f["name"].startswith("Facility ") for f in x["facilities"]); print("facilities", len(x["facilities"]), "slots", len(x["slots"]), "names", [f["name"] for f in x["facilities"][:4]])' <<< "$body"
