@@ -1,0 +1,41 @@
+name: Fix PlayLocal court option parsing
+on:
+  push:
+    paths:
+      - .github/workflows/fix-court-option-parsing.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: pip install -r requirements.txt >/dev/null
+      - name: Apply parser repair
+        run: python scripts/fix_court_option_parsing.py
+      - name: Verify backend and frontend
+        run: |
+          python -m py_compile playlocal_server.py
+          python - <<'PY'
+          import playlocal_server as p
+          assert p._court_name_from_text('Your Reservation Sunday, September 20 7am - 8am Court name: 1 Court 1 - $0 Prefer a different court? Total $0') == 'Court 1'
+          assert p._court_name_from_text('Court 2 - $0') == 'Court 2'
+          PY
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          h=Path('index.html').read_text()
+          assert 'courtDisplayName' in h
+          m=re.search(r'<script>(.*)</script>',h,re.S)
+          Path('/tmp/courtflow.js').write_text(m.group(1))
+          PY
+          node --check /tmp/courtflow.js
+      - name: Commit repair
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add playlocal_server.py index.html
+          git commit -m "Fix PlayLocal specific court option parsing"
+          git push
