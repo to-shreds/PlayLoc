@@ -15,11 +15,13 @@ jobs:
         shell: python
         run: |
           from pathlib import Path
+          import textwrap
           p=Path('playlocal_server.py')
           s=p.read_text()
           start=s.index('def parse_facilities_page(')
           end=s.index('\ndef availability(',start)
-          new='''def parse_facilities_page(page, q, wanted, start, end, facilities, slots):
+          new=textwrap.dedent('''
+          def parse_facilities_page(page, q, wanted, start, end, facilities, slots):
               d = soup(page.text)
               for box in d.select('li[data-role="facility"]'):
                   fid = str(box.get('data-id') or '')
@@ -63,8 +65,7 @@ jobs:
                           'date': q.get('date'), 'start': st, 'end': st + 60,
                           'available': available, 'priceCents': price,
                       }
-          '''
-          new='\n'.join(line[10:] if line.startswith('          ') else line for line in new.splitlines())+'\n'
+          ''').lstrip()
           p.write_text(s[:start]+new+s[end:])
       - name: Verify live parser
         shell: bash
