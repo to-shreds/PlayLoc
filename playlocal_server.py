@@ -812,6 +812,19 @@ def book(req):
         IDEM[key] = result
     return result
 
+def verify_booking(req):
+    s = get_session(req['sessionToken'], req['accountId'])
+    slot = req.get('slot') or {}
+    if not slot.get('date') or slot.get('start') is None:
+        raise ApiError('VERIFY_BOOKING', 'A reservation date and start time are required.')
+    row = _reconcile_created_reservation(s, slot)
+    return {
+        'confirmed': row is not None,
+        'reservation': row,
+        'checkedAt': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+    }
+
+
 def dispatch(req):
     if req.get('version') != 1:
         raise ApiError('VERSION', 'CourtFlow protocol version 1 is required.')
@@ -829,6 +842,8 @@ def dispatch(req):
         return history(req)
     if action == 'court_options':
         return court_options(req)
+    if action == 'verify_booking':
+        return verify_booking(req)
     if action == 'book':
         return book(req)
     raise ApiError('ACTION', 'Unknown adapter action.')
