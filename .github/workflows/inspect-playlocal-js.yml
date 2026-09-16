@@ -10,41 +10,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: pip install -r requirements.txt >/dev/null
-      - name: Inspect embedded court data
+      - name: Inspect exact Reserve click handler
         shell: python
         run: |
-          import os, sys, re
-          sys.path.insert(0, os.getcwd())
-          from playlocal_server import browser_session, browser_get, soup, BASE
-          s=browser_session()
-          browser_get(s, BASE+'/', retry_403=False)
-          params={
-            'search[date]':'2026-09-25',
-            'search[location]':'West Roxbury, MA',
-            'search[reservable_type]':'TennisCourt',
-            'search[sport]':'tennis',
-            'search[time]':'early_morning',
-            'commit':'Search Courts'
-          }
-          r=browser_get(s,BASE+'/facilities',params=params,referer=BASE+'/facilities',retry_403=False)
-          print('URL',r.url,'STATUS',r.status_code,'LEN',len(r.text))
+          import os,sys
+          sys.path.insert(0,os.getcwd())
+          from playlocal_server import browser_session,browser_get,soup,BASE
+          s=browser_session(); browser_get(s,BASE+'/',retry_403=False)
+          r=browser_get(s,BASE+'/facilities',params={
+            'search[date]':'2026-09-25','search[location]':'West Roxbury, MA',
+            'search[reservable_type]':'TennisCourt','search[sport]':'tennis',
+            'search[time]':'early_morning','commit':'Search Courts'
+          },referer=BASE+'/facilities',retry_403=False)
           d=soup(r.text)
-          for box in d.select('li[data-role="facility"]'):
-            if str(box.get('data-id'))=='22':
-              print('WEST_ROXBURY_CARD',str(box)[:20000])
-          t=r.text
-          for needle in ['reservable','reservables','TennisCourt','court_id','reservable_id','facility_id','data-id="22"','West Roxbury High School']:
-            print('\nNEEDLE',needle)
-            for i,m in enumerate(re.finditer(re.escape(needle),t,re.I)):
-              if i>=40: break
-              p=m.start(); print('OCC',i,t[max(0,p-1200):p+2600].replace('\n',' ')[:3800])
-          print('\nLINKS')
-          for a in d.find_all('a',href=True):
-            href=a.get('href',''); txt=' '.join(a.stripped_strings)
-            if '22' in href or re.search(r'court|reserv',href+' '+txt,re.I):
-              print(txt,'=>',href,dict(a.attrs))
-          print('\nDATA_ATTRS')
-          for el in d.find_all(True):
-            attrs={k:v for k,v in el.attrs.items() if k.startswith('data-')}
-            if attrs and ('22' in str(attrs) or re.search(r'court|reserv',str(attrs),re.I)):
-              print(el.name,attrs,str(el)[:700])
+          print('PAGE',r.url)
+          for i,sc in enumerate(d.find_all('script')):
+            txt=sc.string or sc.get_text() or ''
+            if 'reservation-selector' in txt or 'li.reserve a' in txt or 'slot-available' in txt:
+              print('\nSCRIPT',i,'START')
+              print(txt)
+              print('SCRIPT',i,'END')
