@@ -243,25 +243,45 @@ async function closeSession(session) {
 
 app.get('/health', (req, res) => res.json({ ok: true, service: 'courtflow-browser' }));
 
-app.post('/session/start', async (req, res) => {
+async function initializeSession(session) {
   let browser = null;
   try {
-    const payload = verifyTicket(req.body?.ticket);
-    if (!payload.bridgeId) throw new Error('Browser ticket is missing its authenticated session bridge.');
-    const material = await fetchSessionMaterial(payload.bridgeId, payload.accountId);
+    session.state = 'starting';
+    session.statusText = 'Starting the private PlayLocal browser…';
+    const material = await fetchSessionMaterial(session.payload.bridgeId, session.payload.accountId);
     browser = await launchBrowser();
+    session.browser = browser;
     const page = await browser.newPage();
+    session.page = page;
     await page.setViewport(VIEWPORT);
     await page.setJavaScriptEnabled(true);
     await applySessionMaterial(page, material);
-    await navigateReservation(page, payload);
+    session.state = 'loading';
+    session.statusText = 'Opening the PlayLocal reservation…';
+    await navigateReservation(page, session.payload);
+    await inspect(session);
+    session.monitor = setInterval(() => inspect(session), 650);
+    console.log(`Remote session ${session.id} initialized state=${session.state} url=${page.url()}`);
+  } catch (err) {
+    session.state = 'failed';
+    session.statusText = err.message || String(err);
+    console.error(`Remote session ${session.id} failed:`, err?.stack || err);
+    try { await browser?.close(); } catch {}
+    session.browser = null;
+    session.page = null;
+  }
+}
 
+app.post('/session/start', async (req, res) => {
+  try {
+    const payload = verifyTicket(req.body?.ticket);
+    if (!payload.bridgeId) throw new Error('Browser ticket is missing its authenticated session bridge.');
     const id = crypto.randomBytes(18).toString('base64url');
     const key = crypto.randomBytes(24).toString('base64url');
     const session = {
-      id, key, page, browser, payload,
-      state: 'verification',
-      statusText: 'Opening PlayLocal verification…',
+      id, key, page: null, browser: null, payload,
+      state: 'starting',
+      statusText: 'Starting the private PlayLocal browser…',
       createdAt: Date.now(),
       lastActivity: Date.now(),
       prepared: false,
@@ -272,11 +292,9 @@ app.post('/session/start', async (req, res) => {
       monitor: null,
     };
     sessions.set(id, session);
-    await inspect(session);
-    session.monitor = setInterval(() => inspect(session), 650);
     res.json({ ok: true, sessionId: id, sessionKey: key, state: session.state, statusText: session.statusText, viewport: VIEWPORT });
+    initializeSession(session);
   } catch (err) {
-    try { await browser?.close(); } catch {}
     console.error('start session failed:', err?.stack || err);
     res.status(err.status || 500).json({ ok: false, message: err.message || String(err) });
   }
@@ -285,11 +303,12 @@ app.post('/session/start', async (req, res) => {
 app.get('/session/:id/status', requireSession, async (req, res) => {
   const s = req.remoteSession;
   await inspect(s);
-  res.json({ ok: true, state: s.state, statusText: s.statusText, viewport: VIEWPORT, ageSeconds: Math.round((Date.now() - s.createdAt) / 1000) });
+  res.json({ ok: true, state: s.state, statusText: s.statusText, viewport: VIEWPORT, frameReady: !!s.page && !s.page.isClosed(), ageSeconds: Math.round((Date.now() - s.createdAt) / 1000) });
 });
 
 app.get('/session/:id/frame', requireSession, async (req, res) => {
   try {
+    if (!req.remoteSession.page || req.remoteSession.page.isClosed()) return res.status(425).json({ ok: false, message: 'Remote browser is still starting.' });
     const png = await req.remoteSession.page.screenshot({ type: 'png', fullPage: false, captureBeyondViewport: false });
     res.type('png').send(png);
   } catch (err) {
@@ -337,7 +356,6 @@ setInterval(() => {
 
 process.on('SIGTERM', async () => {
   for (const s of sessions.values()) await closeSession(s);
-  try { const b = await browserPromise; await b?.close(); } catch {}
   process.exit(0);
 });
 

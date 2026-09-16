@@ -24,7 +24,7 @@
 <div id="browserModal" class="browser-modal hidden">
   <div class="browser-card">
     <div class="browser-head"><div class="grow"><b>4. Complete PlayLocal verification</b><div id="browserStatus" class="browser-status">Opening remote browser…</div></div><button class="btn hidden" id="browserRetry">Retry</button><button class="btn" id="browserClose">Close</button></div>
-    <div class="browser-view" id="browserView"><img id="browserFrame" alt="Interactive PlayLocal verification browser"></div>
+    <div class="browser-view" id="browserView"><div id="browserLoading" style="color:#dbe7e1;text-align:center;padding:24px"><div class="spinner"></div><div style="margin-top:10px">Starting PlayLocal…</div></div><img id="browserFrame" class="hidden" alt="Interactive PlayLocal verification browser"></div>
     <div class="browser-tools"><div class="browser-instruction"><b>Next:</b> Tap the verification control in the PlayLocal image above. CourtFlow will submit automatically when verification completes.</div><button class="btn" id="browserUp">↑</button><button class="btn" id="browserDown">↓</button><details class="browser-more"><summary>Keyboard controls</summary><div class="browser-keyboard"><input id="browserText" placeholder="Type only if PlayLocal asks"><button class="btn" id="browserSendText">Send</button><button class="btn" id="browserEnter">Enter</button></div></details></div>
   </div>
 </div>
@@ -186,9 +186,7 @@ async function doBook(slot,account){const ss=await auth(account);return rpc('boo
 function verificationHelp(row,url){
   const help=$('bookingHelp'),a=row.account,court=row.slot.courtName;
   if(state.serverVault){
-    help.innerHTML=`<div class="notice"><b>Interactive verification required</b><div style="margin-top:6px">CourtFlow will open PlayLocal in a temporary remote browser already signed into <b>${esc(a.name)}</b>. Complete only the verification PlayLocal presents. Credentials stay on Render.</div><div style="margin-top:10px"><button class="btn primary" id="openRemoteBrowser">Open verification browser</button> <button class="btn" id="checkPending">Check & continue</button></div></div>`;
-    $('openRemoteBrowser').onclick=()=>startRemoteBrowser(row);
-    $('checkPending').onclick=()=>checkPendingBooking(true);
+    help.innerHTML=`<div class="notice"><b>Verification needed for ${esc(a.name)}</b><div style="margin-top:6px">Opening PlayLocal verification now. Complete the verification when it appears. CourtFlow will submit and continue automatically.</div></div>`;
     startRemoteBrowser(row);
     return;
   }
@@ -221,10 +219,30 @@ async function pollRemoteBrowser(){
       if(state.pendingVerification)setTimeout(()=>checkPendingBooking(true),400);
       return;
     }
-    if(s.state==='failed')return;
-    const fr=await browserRequest(`/session/${encodeURIComponent(rb.id)}/frame?ts=${Date.now()}`);
-    if(fr.ok){const blob=await fr.blob();if(state.remoteBrowser===rb){if(rb.objectUrl)URL.revokeObjectURL(rb.objectUrl);rb.objectUrl=URL.createObjectURL(blob);$('browserFrame').src=rb.objectUrl;}}
-  }catch(e){$('browserStatus').textContent=e.message||String(e)}
+    if(s.state==='failed'){
+      $('browserRetry').classList.remove('hidden');
+      $('browserLoading').classList.add('hidden');
+      log('Verification browser stopped: '+(s.statusText||'Unknown error'));
+      return;
+    }
+    if(s.frameReady){
+      const fr=await browserRequest(`/session/${encodeURIComponent(rb.id)}/frame?ts=${Date.now()}`);
+      if(fr.ok){
+        const blob=await fr.blob();
+        if(state.remoteBrowser===rb){
+          if(rb.objectUrl)URL.revokeObjectURL(rb.objectUrl);
+          rb.objectUrl=URL.createObjectURL(blob);
+          $('browserFrame').src=rb.objectUrl;
+          $('browserFrame').classList.remove('hidden');
+          $('browserLoading').classList.add('hidden');
+        }
+      }
+    }
+  }catch(e){
+    $('browserStatus').textContent=e.message||String(e);
+    $('browserRetry').classList.remove('hidden');
+    log('Verification display failed: '+(e.message||String(e)));
+  }
   if(state.remoteBrowser===rb)state.browserPoll=setTimeout(pollRemoteBrowser,850);
 }
 async function startRemoteBrowser(row){
@@ -241,6 +259,7 @@ async function startRemoteBrowser(row){
     pollRemoteBrowser();
   }catch(e){$('browserStatus').textContent='Could not open verification browser: '+e.message;$('browserRetry').classList.remove('hidden');log('Verification browser failed: '+e.message)}
 }
+$('browserRetry').onclick=async()=>{const p=state.pendingVerification;await closeRemoteBrowser();if(p)startRemoteBrowser(p.row)};
 $('browserClose').onclick=closeRemoteBrowser;
 $('browserRetry').onclick=async()=>{await closeRemoteBrowser();const row=state.pendingVerification?.row;if(row)startRemoteBrowser(row)};
 $('browserUp').onclick=()=>sendBrowserInput({type:'wheel',deltaY:-560});
