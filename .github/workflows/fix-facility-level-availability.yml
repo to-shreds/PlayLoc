@@ -1,0 +1,91 @@
+name: Fix facility-level availability
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/fix-facility-level-availability.yml
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch parser
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('playlocal_server.py')
+          s=p.read_text()
+          start=s.index('def parse_facilities_page(')
+          end=s.index('\ndef availability(',start)
+          new='''def parse_facilities_page(page, q, wanted, start, end, facilities, slots):
+              d = soup(page.text)
+              for box in d.select('li[data-role="facility"]'):
+                  fid = str(box.get('data-id') or '')
+                  if not fid:
+                      link = box.find('a', href=re.compile(r'/facilities/[^/]+/reservations/new'))
+                      m = re.search(r'/facilities/([^/]+)/reservations/new', link.get('href', '') if link else '')
+                      fid = m.group(1) if m else ''
+                  if not fid or (wanted and fid != wanted):
+                      continue
+                  heading = box.find(['h4','h3','h2','h1'])
+                  name = clean(heading.get_text(' ', strip=True)) if heading else 'Facility ' + fid
+                  text = clean(box.get_text(' ', strip=True))
+                  price_node = box.select_one('[data-role="price"]')
+                  price_text = clean(price_node.get_text(' ', strip=True)) if price_node else text
+                  price_match = re.search(r'\\$(\\d+(?:\\.\\d{1,2})?)', price_text)
+                  price = int(round(float(price_match.group(1)) * 100)) if price_match else 0
+                  reservable = box.select_one('[data-role="reservable-number"]')
+                  reservable_count = int(clean(reservable.get_text(strip=True))) if reservable and clean(reservable.get_text(strip=True)).isdigit() else 1
+                  courts = [{'id': f'{fid}:any', 'name': 'Any available court'}]
+                  facilities[fid] = {'id': fid, 'name': name, 'courts': courts, 'reservableCourtCount': reservable_count}
+                  selector = box.select_one('[data-role="reservation-selector"]')
+                  if not selector:
+                      continue
+                  for node in selector.find_all('li', recursive=False):
+                      txt = clean(node.get_text(' ', strip=True))
+                      mt = re.fullmatch(r'(\\d{1,2})(?::00)?\\s*(am|pm)', txt, re.I)
+                      if not mt:
+                          continue
+                      h = int(mt.group(1)) % 12 + (12 if mt.group(2).lower() == 'pm' else 0)
+                      st = h * 60
+                      if st < start or st >= end:
+                          continue
+                      classes = {str(x).lower() for x in node.get('class', [])}
+                      available = 'slot-available' in classes and 'slot-unavailable' not in classes
+                      c = courts[0]
+                      key = (fid, c['id'], st)
+                      slots[key] = {
+                          'slotId': f'{fid}:{c["id"]}:{q.get("date")}:{st}',
+                          'facilityId': fid, 'facilityName': name,
+                          'courtId': c['id'], 'courtName': c['name'],
+                          'date': q.get('date'), 'start': st, 'end': st + 60,
+                          'available': available, 'priceCents': price,
+                      }
+          '''
+          new='\n'.join(line[10:] if line.startswith('          ') else line for line in new.splitlines())+'\n'
+          p.write_text(s[:start]+new+s[end:])
+      - name: Verify live parser
+        shell: bash
+        run: |
+          python -m py_compile playlocal_server.py
+          pip install -r requirements.txt >/dev/null
+          python - <<'PY'
+          from playlocal_server import availability
+          d=availability({'date':'2026-09-25','location':'Boston','sport':'tennis','start':480,'end':720})
+          assert d['facilities']
+          assert d['slots']
+          assert all(len(f['courts'])==1 and f['courts'][0]['name']=='Any available court' for f in d['facilities'])
+          assert all(s['courtName']=='Any available court' for s in d['slots'])
+          assert any(s['available'] for s in d['slots'])
+          print('FACILITIES',[(f['name'],f.get('reservableCourtCount')) for f in d['facilities']])
+          print('SLOTS',len(d['slots']),'AVAILABLE',sum(1 for s in d['slots'] if s['available']))
+          PY
+      - name: Commit
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add playlocal_server.py
+          git commit -m "Stop inventing court-specific availability"
+          git push
