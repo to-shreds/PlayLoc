@@ -1,0 +1,24 @@
+name: Live PlayLocal search parser test
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - playlocal_server.py
+      - .github/workflows/live-search-test.yml
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install -r requirements.txt
+      - name: Verify live facilities and slots
+        shell: python
+        run: |
+          from playlocal_server import availability
+          d=availability({'date':'2026-09-17','location':'Boston','sport':'tennis','start':960,'end':1200})
+          print('FACILITIES',[(x['id'],x['name']) for x in d['facilities']])
+          print('SLOTS',len(d['slots']),'AVAILABLE',sum(1 for x in d['slots'] if x['available']))
+          assert d['facilities'], 'No facilities parsed'
+          assert all(not x['name'].startswith('Facility ') for x in d['facilities']), 'Facility names not parsed'
+          assert d['slots'], 'No slots parsed'
+          assert any(x['available'] for x in d['slots']), 'No available slots parsed'
