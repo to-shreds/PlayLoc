@@ -10,6 +10,8 @@ UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like 
 SESSIONS = {}
 IDEM = {}
 LOCK = threading.RLock()
+SITE_TOKENS = {}
+SITE_TOKEN_TTL = 12 * 60 * 60
 
 class ApiError(Exception):
     def __init__(self, code, message, status=400, definitive=False, data=None):
@@ -83,6 +85,65 @@ def submit(sess, page, form, overrides=None):
         timeout=25,
         allow_redirects=True,
     )
+
+def configured_server_accounts():
+    out = {}
+    for i in range(1, 4):
+        username = os.environ.get(f'PLAYLOCAL_ACCOUNT_{i}_USERNAME', '').strip()
+        password = os.environ.get(f'PLAYLOCAL_ACCOUNT_{i}_PASSWORD', '')
+        if not username or not password:
+            continue
+        account_id = f'server-{i}'
+        out[account_id] = {
+            'id': account_id,
+            'name': os.environ.get(f'PLAYLOCAL_ACCOUNT_{i}_NAME', f'Account {i}').strip() or f'Account {i}',
+            'username': username,
+            'password': password,
+        }
+    return out
+
+
+def site_auth_required():
+    return bool(os.environ.get('COURTFLOW_SITE_PASSWORD', ''))
+
+
+def public_server_accounts():
+    return [{'id': a['id'], 'name': a['name']} for a in configured_server_accounts().values()]
+
+
+def issue_site_token(password):
+    expected = os.environ.get('COURTFLOW_SITE_PASSWORD', '')
+    if not expected:
+        return {'siteToken': '', 'accounts': public_server_accounts(), 'expiresInSeconds': 0}
+    supplied = str(password or '')
+    if not secrets.compare_digest(supplied.encode(), expected.encode()):
+        raise ApiError('SITE_AUTH_REJECTED', 'Incorrect site password.', 401, True)
+    token = secrets.token_urlsafe(32)
+    with LOCK:
+        SITE_TOKENS[token] = time.time() + SITE_TOKEN_TTL
+    return {'siteToken': token, 'accounts': public_server_accounts(), 'expiresInSeconds': SITE_TOKEN_TTL}
+
+
+def require_site_token(req):
+    if not site_auth_required():
+        return
+    token = str(req.get('siteToken') or '')
+    now = time.time()
+    with LOCK:
+        expired = [k for k, exp in SITE_TOKENS.items() if exp <= now]
+        for k in expired:
+            SITE_TOKENS.pop(k, None)
+        exp = SITE_TOKENS.get(token)
+    if not exp or exp <= now:
+        raise ApiError('SITE_AUTH_REQUIRED', 'Enter the CourtFlow site password to continue.', 401, True)
+
+
+def login_server_account(account_id):
+    account = configured_server_accounts().get(str(account_id or ''))
+    if not account:
+        raise ApiError('ACCOUNT_NOT_FOUND', 'That server account is not configured.', 404, True)
+    return login(account['id'], account['username'], account['password'])
+
 
 def login(account_id, username, password):
     s = browser_session()
@@ -830,8 +891,22 @@ def dispatch(req):
         raise ApiError('VERSION', 'CourtFlow protocol version 1 is required.')
     action = req.get('action')
     if action == 'capabilities':
-        return {'vendor': 'playlocal', 'idempotency': True, 'reservationHistory': True, 'completeDailyHistory': False, 'slotMinutes': 60}
+        return {
+            'vendor': 'playlocal', 'idempotency': True, 'reservationHistory': True,
+            'completeDailyHistory': False, 'slotMinutes': 60,
+            'siteAuthRequired': site_auth_required(),
+            'serverAccountCount': len(configured_server_accounts()),
+        }
+    if action == 'site_login':
+        return issue_site_token(req.get('sitePassword'))
+
+    require_site_token(req)
+
+    if action == 'accounts':
+        return {'accounts': public_server_accounts()}
     if action == 'authenticate':
+        if configured_server_accounts():
+            return login_server_account(req.get('accountId'))
         return login(req['accountId'], req['username'], req['password'])
     if action == 'availability':
         sess = None
