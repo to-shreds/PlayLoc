@@ -11,12 +11,10 @@ jobs:
   smoke:
     runs-on: ubuntu-latest
     steps:
-      - name: Compare direct PlayLocal and Render reachability
+      - name: Verify Render can reach PlayLocal
         shell: bash
         run: |
-          set +e
-          echo 'DIRECT_PLAYLOCAL'
-          curl --silent --show-error --location --output /tmp/playlocal.html --write-out 'HTTP_STATUS:%{http_code}\n' https://www.playlocal.com/facilities
-          head -c 160 /tmp/playlocal.html | tr '\n' ' '; echo
-          echo 'RENDER_UPSTREAM'
-          curl --silent --show-error --write-out '\nHTTP_STATUS:%{http_code}\n' https://courtflow-playlocal.onrender.com/upstream
+          set -e
+          body=$(curl --fail --silent --show-error https://courtflow-playlocal.onrender.com/upstream)
+          echo "$body"
+          python -c 'import json,sys; d=json.load(sys.stdin); assert d.get("ok") is True and d.get("status")==200' <<< "$body"
