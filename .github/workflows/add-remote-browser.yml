@@ -1,0 +1,46 @@
+name: Add remote browser verification
+
+on:
+  push:
+    paths:
+      - 'browser_service/**'
+      - 'scripts/add_remote_browser.py'
+      - '.github/workflows/add-remote-browser.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply remote browser integration
+        run: python scripts/add_remote_browser.py
+      - name: Verify source
+        run: |
+          python -m py_compile playlocal_server.py
+          node --check browser_service/server.js
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          s=Path('playlocal_server.py').read_text()
+          h=Path('index.html').read_text()
+          assert 'issue_browser_ticket' in s
+          assert "'/browser-credentials'" in s
+          assert "if action == 'browser_ticket':" in s
+          assert 'BROWSER_SERVICE=' in h
+          assert 'startRemoteBrowser(row)' in h
+          assert 'browserModal' in h
+          m=re.search(r'<script>(.*)</script>',h,re.S)
+          Path('/tmp/courtflow.js').write_text(m.group(1))
+          PY
+          node --check /tmp/courtflow.js
+      - name: Commit remote browser integration
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add playlocal_server.py index.html
+          git commit -m "Add interactive remote PlayLocal verification"
+          git push
