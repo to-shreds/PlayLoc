@@ -1,0 +1,50 @@
+name: Inspect PlayLocal reservation client flow
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/inspect-playlocal-js.yml
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install -r requirements.txt >/dev/null
+      - name: Inspect scripts and reservation hooks
+        shell: python
+        run: |
+          from playlocal_server import browser_session, browser_get, soup, BASE
+          from urllib.parse import urljoin
+          import re
+          s=browser_session()
+          r=browser_get(s, BASE+'/facilities', params={
+            'search[date]':'2026-09-25','search[location]':'Boston','search[sport]':'tennis','search[time]':'early_morning','commit':'Find Courts'
+          }, referer=BASE+'/facilities')
+          print('PAGE', r.url, r.status_code)
+          d=soup(r.text)
+          srcs=[]
+          for x in d.find_all('script', src=True):
+            u=urljoin(r.url,x['src'])
+            if u not in srcs: srcs.append(u)
+          print('SCRIPTS', *srcs, sep='\n')
+          needles=['reservations/new','reservation-selector','court_id','reservable','search[date]','friendly_date','reservation']
+          for u in srcs:
+            try:
+              rr=browser_get(s,u,referer=r.url,retry_403=False)
+              txt=rr.text
+            except Exception as e:
+              print('SCRIPT_ERR',u,e); continue
+            hits=[]
+            low=txt.lower()
+            for n in needles:
+              pos=low.find(n.lower())
+              if pos>=0:
+                hits.append((n, txt[max(0,pos-500):pos+1200].replace('\n',' ')[:1700]))
+            if hits:
+              print('\nASSET',u,'STATUS',rr.status_code,'LEN',len(txt))
+              for n,snip in hits:
+                print('HIT',n, snip)
+          # Also show forms and data attributes on the West Roxbury card.
+          for box in d.select('li[data-role="facility"]'):
+            if str(box.get('data-id'))=='22':
+              print('\nWEST_ROXBURY_CARD',str(box)[:14000])
