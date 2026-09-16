@@ -2,7 +2,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urljoin, urlparse, urlencode, parse_qsl
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
-import hashlib, json, os, re, secrets, threading, time, requests
+import base64, hashlib, hmac, json, os, re, secrets, threading, time, requests
 from curl_cffi import requests as curl_requests
 
 BASE = 'https://www.playlocal.com'
@@ -143,6 +143,61 @@ def login_server_account(account_id):
     if not account:
         raise ApiError('ACCOUNT_NOT_FOUND', 'That server account is not configured.', 404, True)
     return login(account['id'], account['username'], account['password'])
+
+
+def _b64url(data):
+    return base64.urlsafe_b64encode(data).decode().rstrip('=')
+
+
+def issue_browser_ticket(req):
+    secret = os.environ.get('COURTFLOW_BROWSER_SECRET', '')
+    if not secret:
+        raise ApiError('BROWSER_UNAVAILABLE', 'Interactive browser verification is not configured.', 503, True)
+    account_id = str(req.get('accountId') or '')
+    if account_id not in configured_server_accounts():
+        raise ApiError('ACCOUNT_NOT_FOUND', 'That server account is not configured.', 404, True)
+    session_token = str(req.get('sessionToken') or '')
+    sess = get_session(session_token, account_id)
+    slot = req.get('slot') or {}
+    for key in ('facilityId', 'courtId', 'date', 'start', 'end'):
+        if slot.get(key) is None or slot.get(key) == '':
+            raise ApiError('BROWSER_TICKET', f'Missing slot field: {key}.', 400, True)
+    booking_q = {
+        'date': slot['date'],
+        'location': slot.get('searchLocation', ''),
+        'sport': 'tennis',
+        'start': int(slot['start']),
+        'end': int(slot['end']),
+        'facilityId': str(slot['facilityId']),
+    }
+    page, doc, form, _, _, _, booking_url = _reservation_page_for_query(sess, booking_q, str(slot['facilityId']))
+    if page is None:
+        raise ApiError('SLOT_UNAVAILABLE', 'PlayLocal no longer shows that time as available.', 409, True)
+    if not form:
+        raise ApiError('UPSTREAM_CHANGED', 'PlayLocal reservation form was not found for interactive verification.', 502)
+    set_fields(form, slot)  # validates that the selected exact court is still offered
+    safe_slot = {k: slot.get(k) for k in (
+        'slotId', 'facilityId', 'facilityName', 'courtId', 'courtName', 'date',
+        'start', 'end', 'priceCents', 'searchLocation'
+    )}
+    payload = {
+        'exp': int(time.time()) + 10 * 60,
+        'nonce': secrets.token_urlsafe(18),
+        'accountId': account_id,
+        'slot': safe_slot,
+        'reservationUrl': booking_url,
+    }
+    raw = json.dumps(payload, separators=(',', ':'), sort_keys=True).encode()
+    body = _b64url(raw)
+    sig = _b64url(hmac.new(secret.encode(), body.encode(), hashlib.sha256).digest())
+    return {'ticket': body + '.' + sig, 'expiresInSeconds': 10 * 60}
+
+
+def browser_credentials(account_id):
+    account = configured_server_accounts().get(str(account_id or ''))
+    if not account:
+        raise ApiError('ACCOUNT_NOT_FOUND', 'That server account is not configured.', 404, True)
+    return {'username': account['username'], 'password': account['password']}
 
 
 def login(account_id, username, password):
@@ -896,6 +951,7 @@ def dispatch(req):
             'completeDailyHistory': False, 'slotMinutes': 60,
             'siteAuthRequired': site_auth_required(),
             'serverAccountCount': len(configured_server_accounts()),
+            'remoteBrowserAvailable': bool(os.environ.get('COURTFLOW_BROWSER_SECRET', '')),
         }
     if action == 'site_login':
         return issue_site_token(req.get('sitePassword'))
@@ -919,6 +975,8 @@ def dispatch(req):
         return court_options(req)
     if action == 'verify_booking':
         return verify_booking(req)
+    if action == 'browser_ticket':
+        return issue_browser_ticket(req)
     if action == 'book':
         return book(req)
     raise ApiError('ACTION', 'Unknown adapter action.')
@@ -982,6 +1040,35 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_error(404)
 
     def do_POST(self):
+        if self.path == '/browser-credentials':
+            try:
+                expected = os.environ.get('COURTFLOW_BROWSER_SECRET', '')
+                supplied = self.headers.get('Authorization', '')
+                if supplied.lower().startswith('bearer '):
+                    supplied = supplied[7:]
+                if not expected or not secrets.compare_digest(str(supplied), str(expected)):
+                    payload = {'ok': False, 'message': 'Unauthorized.'}
+                    status = 401
+                else:
+                    n = int(self.headers.get('Content-Length', '0'))
+                    req = json.loads(self.rfile.read(n) or b'{}')
+                    creds = browser_credentials(req.get('accountId'))
+                    payload = {'ok': True, **creds}
+                    status = 200
+            except ApiError as e:
+                payload = {'ok': False, 'message': e.message}
+                status = e.status
+            except Exception:
+                payload = {'ok': False, 'message': 'Credential service error.'}
+                status = 500
+            raw = json.dumps(payload).encode()
+            self.send_response(status)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Cache-Control', 'no-store')
+            self.send_header('Content-Length', str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+            return
         if self.path != '/adapter':
             return self.send_error(404)
         try:
