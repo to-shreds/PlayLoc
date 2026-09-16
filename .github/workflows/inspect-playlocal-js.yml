@@ -13,9 +13,10 @@ jobs:
       - name: Inspect scripts and reservation hooks
         shell: python
         run: |
+          import os, sys, re
+          sys.path.insert(0, os.getcwd())
           from playlocal_server import browser_session, browser_get, soup, BASE
           from urllib.parse import urljoin
-          import re
           s=browser_session()
           r=browser_get(s, BASE+'/facilities', params={
             'search[date]':'2026-09-25','search[location]':'Boston','search[sport]':'tennis','search[time]':'early_morning','commit':'Find Courts'
@@ -27,7 +28,7 @@ jobs:
             u=urljoin(r.url,x['src'])
             if u not in srcs: srcs.append(u)
           print('SCRIPTS', *srcs, sep='\n')
-          needles=['reservations/new','reservation-selector','court_id','reservable','search[date]','friendly_date','reservation']
+          needles=['reservations/new','reservation-selector','court_id','reservable','search[date]','friendly_date','reservation','facility_id']
           for u in srcs:
             try:
               rr=browser_get(s,u,referer=r.url,retry_403=False)
@@ -39,12 +40,11 @@ jobs:
             for n in needles:
               pos=low.find(n.lower())
               if pos>=0:
-                hits.append((n, txt[max(0,pos-500):pos+1200].replace('\n',' ')[:1700]))
+                hits.append((n, txt[max(0,pos-700):pos+1800].replace('\n',' ')[:2500]))
             if hits:
               print('\nASSET',u,'STATUS',rr.status_code,'LEN',len(txt))
               for n,snip in hits:
                 print('HIT',n, snip)
-          # Also show forms and data attributes on the West Roxbury card.
           for box in d.select('li[data-role="facility"]'):
             if str(box.get('data-id'))=='22':
               print('\nWEST_ROXBURY_CARD',str(box)[:14000])
