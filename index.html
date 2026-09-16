@@ -6,8 +6,9 @@
 <title>CourtFlow</title>
 <style>
 :root{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#17261f;background:#f3f6f4;--green:#147a55;--green2:#dff4e9;--red:#a63131;--red2:#f9e2e2;--blue:#235ea7;--blue2:#dce9fb;--border:#d9e2dc;--muted:#6d7a73}*{box-sizing:border-box}body{margin:0}.wrap{max-width:1200px;margin:auto;padding:18px}.top{display:flex;align-items:center;justify-content:space-between;gap:14px}.brand{font-size:28px;font-weight:850;letter-spacing:-.5px}.sub{color:var(--muted);font-size:13px}.pill{border-radius:999px;padding:7px 11px;background:#e6efe9;font-size:13px}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0}.tabs button,.btn{border:0;border-radius:10px;padding:10px 14px;background:#e3e9e5;color:#17261f;font:inherit;cursor:pointer}.tabs button.active,.btn.primary{background:var(--green);color:#fff}.btn.danger{background:#fae0e0;color:#7f1e1e}.btn:disabled{opacity:.55;cursor:not-allowed}.page.hidden,.hidden{display:none}.card{background:#fff;border:1px solid var(--border);border-radius:16px;padding:16px;box-shadow:0 2px 10px #00000008;margin-bottom:14px}.card h2{font-size:19px;margin:0 0 12px}.controls{display:grid;grid-template-columns:1.2fr 1fr .8fr .8fr auto;gap:10px;align-items:end}.controls.second{grid-template-columns:1.7fr .7fr auto auto;margin-top:10px}.field label{display:block;font-size:12px;font-weight:750;margin:0 0 5px}.field input,.field select{width:100%;border:1px solid #cbd6cf;border-radius:9px;padding:10px;background:#fff;font:inherit}.small{font-size:12px;color:var(--muted)}.notice{padding:10px 12px;border-radius:10px;background:#eef4f0;font-size:13px;margin-top:10px}.legend{display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:9px 0}.swatch{width:14px;height:14px;border-radius:4px;display:inline-block;vertical-align:-2px;margin-right:5px}.swatch.green{background:var(--green2);border:1px solid #80c5a7}.swatch.red{background:var(--red2);border:1px solid #d7a0a0}.swatch.blue{background:var(--blue2);border:2px solid var(--blue)}.matrix-wrap{overflow:auto;border:1px solid var(--border);border-radius:12px;max-height:64vh;background:#fff}.matrix{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%}.matrix th,.matrix td{border-right:1px solid var(--border);border-bottom:1px solid var(--border);padding:7px;text-align:center;min-width:104px}.matrix th{background:#f6f8f7;font-size:12px;position:sticky;top:0;z-index:3}.matrix th:first-child{left:0;z-index:4}.matrix td:first-child{position:sticky;left:0;background:#fff;z-index:2;font-weight:750;min-width:84px}.matrix tr:last-child td{border-bottom:0}.matrix th:last-child,.matrix td:last-child{border-right:0}.cell{display:block;width:100%;min-height:46px;border:0;border-radius:9px;padding:6px;font:inherit;font-weight:750}.cell.available{background:var(--green2);color:#12613f;cursor:pointer}.cell.unavailable{background:var(--red2);color:#8a2929;cursor:default}.cell.unknown{background:#ecefee;color:#6c7470;cursor:default}.cell.selected{background:var(--blue2);color:#164d91;outline:2px solid var(--blue);outline-offset:-2px}.cell .tiny{display:block;font-size:10px;font-weight:600;opacity:.8;margin-top:2px}.plan-row,.account-row,.booking-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;align-items:center;padding:10px 0;border-top:1px solid #edf1ee}.plan-row:first-child,.account-row:first-child,.booking-row:first-child{border-top:0}.plan-row .who{text-align:right;font-weight:750}.ok{color:var(--green)}.bad{color:var(--red)}.status{white-space:pre-wrap;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;background:#0d1712;color:#d4f4e4;padding:12px;border-radius:10px;min-height:82px;max-height:280px;overflow:auto}.two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px}.account-row{grid-template-columns:1fr auto}.booking-row{grid-template-columns:1fr 1fr auto}.selected-summary{font-weight:750;margin-left:auto}.spinner{display:inline-block;width:15px;height:15px;border:2px solid #ffffff66;border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;vertical-align:-2px;margin-right:6px}@keyframes spin{to{transform:rotate(360deg)}}
+.step-banner{display:flex;gap:10px;align-items:center;background:#173f31;color:#fff;border-radius:14px;padding:12px 14px;margin-bottom:12px}.step-banner span{opacity:.9}.search-summary{align-items:center;justify-content:space-between;gap:12px}.search-summary:not(.hidden){display:flex}.plan-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.plan-head h2{margin-right:auto!important}.debug-card summary{cursor:pointer;font-weight:750}.browser-instruction{flex:1 1 100%;font-size:13px;background:#eef4f0;padding:9px 10px;border-radius:9px}.browser-more{flex:1 1 100%}.browser-more summary{cursor:pointer;font-size:12px;color:var(--muted)}.browser-keyboard{display:flex;gap:7px;margin-top:8px}.browser-keyboard input{flex:1}.browser-status{font-size:13px!important;font-weight:650;margin-top:2px}
 .browser-modal{position:fixed;inset:0;background:#111c;z-index:900;display:flex;align-items:center;justify-content:center;padding:12px}.browser-modal.hidden{display:none}.browser-card{width:min(1040px,100%);height:min(860px,96vh);background:#fff;border-radius:16px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 18px 60px #0008}.browser-head{display:flex;gap:10px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--border)}.browser-head .grow{flex:1}.browser-view{flex:1;min-height:0;background:#1b1f1d;display:flex;align-items:center;justify-content:center;overflow:auto;touch-action:none}.browser-view img{max-width:100%;max-height:100%;object-fit:contain;cursor:crosshair;user-select:none;-webkit-user-drag:none}.browser-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:9px 12px;border-top:1px solid var(--border)}.browser-tools input{flex:1;min-width:160px;border:1px solid #cbd6cf;border-radius:8px;padding:8px}.browser-status{font-size:12px;color:var(--muted)}.site-gate{position:fixed;inset:0;background:#f3f6f4;z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px}.site-gate.hidden{display:none}.gate-card{width:min(420px,100%);background:#fff;border:1px solid var(--border);border-radius:18px;padding:22px;box-shadow:0 12px 40px #0002}.gate-card h1{margin:0 0 6px;font-size:25px}.gate-card input{width:100%;border:1px solid #cbd6cf;border-radius:9px;padding:11px;font:inherit;margin:12px 0}
-@media(max-width:820px){.wrap{padding:12px}.top{align-items:flex-start}.controls,.controls.second,.two-col{grid-template-columns:1fr 1fr}.controls .wide,.controls.second .wide{grid-column:1/-1}.plan-row{grid-template-columns:1fr 1fr}.plan-row .who{grid-column:1/-1;text-align:left}.booking-row{grid-template-columns:1fr}.matrix-wrap{max-height:58vh}.matrix th,.matrix td{min-width:92px}.matrix td:first-child,.matrix th:first-child{min-width:76px}}
+@media(max-width:820px){.wrap{padding:9px}.top{align-items:flex-start}.brand{font-size:24px}.sub{display:none}.tabs{margin:10px 0}.controls,.controls.second,.two-col{grid-template-columns:1fr 1fr}.controls .wide,.controls.second .wide{grid-column:1/-1}.card{padding:12px;margin-bottom:9px}.step-banner{position:sticky;top:4px;z-index:20;padding:10px 11px}.plan-row{grid-template-columns:1fr 1fr}.plan-row .who{grid-column:1/-1;text-align:left}.booking-row{grid-template-columns:1fr}.matrix-wrap{max-height:52vh}.matrix th,.matrix td{min-width:86px;padding:5px}.matrix td:first-child,.matrix th:first-child{min-width:68px}.cell{min-height:42px;font-size:12px}.browser-modal{padding:0}.browser-card{width:100%;height:100dvh;border-radius:0}.browser-head{padding:8px 9px}.browser-view{min-height:0}.browser-view img{width:100%;height:auto;max-height:none;object-fit:contain}.browser-tools{padding:7px 9px;gap:6px}.browser-tools>.btn{padding:8px 12px}.browser-instruction{font-size:12px}.browser-keyboard{flex-wrap:wrap}.debug-card{margin-top:6px}}
 </style>
 </head>
 <body>
@@ -22,9 +23,9 @@
 </div>
 <div id="browserModal" class="browser-modal hidden">
   <div class="browser-card">
-    <div class="browser-head"><div class="grow"><b>PlayLocal verification</b><div id="browserStatus" class="browser-status">Opening remote browser…</div></div><button class="btn" id="browserClose">Close</button></div>
+    <div class="browser-head"><div class="grow"><b>4. Complete PlayLocal verification</b><div id="browserStatus" class="browser-status">Opening remote browser…</div></div><button class="btn hidden" id="browserRetry">Retry</button><button class="btn" id="browserClose">Close</button></div>
     <div class="browser-view" id="browserView"><img id="browserFrame" alt="Interactive PlayLocal verification browser"></div>
-    <div class="browser-tools"><button class="btn" id="browserUp">Scroll up</button><button class="btn" id="browserDown">Scroll down</button><input id="browserText" placeholder="Type here only if PlayLocal asks for text"><button class="btn" id="browserSendText">Send text</button><button class="btn" id="browserEnter">Enter</button></div>
+    <div class="browser-tools"><div class="browser-instruction"><b>Next:</b> Tap the verification control in the PlayLocal image above. CourtFlow will submit automatically when verification completes.</div><button class="btn" id="browserUp">↑</button><button class="btn" id="browserDown">↓</button><details class="browser-more"><summary>Keyboard controls</summary><div class="browser-keyboard"><input id="browserText" placeholder="Type only if PlayLocal asks"><button class="btn" id="browserSendText">Send</button><button class="btn" id="browserEnter">Enter</button></div></details></div>
   </div>
 </div>
 <div class="wrap" id="appShell">
@@ -32,10 +33,11 @@
   <div class="tabs"><button data-page="calendar" class="active">Court calendar</button><button data-page="bookings">Bookings</button><button data-page="accounts">Accounts</button></div>
 
   <section id="calendar" class="page">
-    <div class="card">
-      <h2>Choose a venue and date</h2>
+    <div id="nextStep" class="step-banner"><b>Step 1 of 4</b><span>Choose a date and find the venue.</span></div>
+    <div class="card" id="searchCard">
+      <h2>1. Find the venue</h2>
       <div class="controls">
-        <div class="field wide"><label>Location</label><input id="location" value="Boston" autocomplete="off"></div>
+        <div class="field wide"><label>Location</label><input id="location" value="West Roxbury" autocomplete="off"></div>
         <div class="field"><label>Date</label><input id="date" type="date"></div>
         <div class="field"><label>Start</label><select id="start"></select></div>
         <div class="field"><label>End</label><select id="end"></select></div>
@@ -44,21 +46,22 @@
       <div class="controls second">
         <div class="field wide"><label>Venue</label><select id="venue"><option value="">Find venues first</option></select></div>
         <div class="field"><label>Per-account allowance per court</label><select id="limit"><option value="120" selected>2 hours</option><option value="180">3 hours</option><option value="240">4 hours</option></select></div>
-        <button class="btn primary" id="loadCalendar">Load court calendar</button>
+        <button class="btn primary" id="loadCalendar">Show availability</button>
         <button class="btn" id="clearSelected">Clear selected</button>
       </div>
-      <div class="notice">Green means that exact court is available at that hour. Red means that exact court is unavailable. Tap green cells to select the reservations you want.</div>
+      <div class="notice">Choose the venue, then show its exact court-by-hour availability.</div>
+      <div id="searchSummary" class="search-summary hidden"><div><b id="searchSummaryTitle"></b><div class="small" id="searchSummaryMeta"></div></div><button class="btn" id="changeSearch">Change</button></div>
     </div>
 
-    <div class="card">
-      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h2 style="margin:0">Court availability</h2><div class="selected-summary" id="selectedSummary">0 selected</div></div>
+    <div class="card" id="availabilityCard">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h2 style="margin:0">2. Pick available times</h2><div class="selected-summary" id="selectedSummary">0 selected</div></div>
       <div class="legend"><span><span class="swatch green"></span>Available</span><span><span class="swatch red"></span>Unavailable</span><span><span class="swatch blue"></span>Selected</span></div>
       <div id="matrixMessage" class="small">Choose a venue, then load the calendar.</div>
       <div id="matrixWrap" class="matrix-wrap hidden"><table class="matrix" id="matrix"></table></div>
     </div>
 
-    <div class="card">
-      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h2 style="margin:0">Booking plan</h2><button class="btn primary" id="buildPlan">Build plan from selected cells</button><button class="btn primary hidden" id="bookPlan">Book planned slots</button></div>
+    <div class="card" id="planCard">
+      <div class="plan-head"><h2 style="margin:0">3. Review and book</h2><button class="btn primary" id="buildPlan">Build booking plan</button><button class="btn primary hidden" id="bookPlan">Book planned slots</button></div>
       <div class="small" style="margin-top:8px">Accounts are used in the order shown on the Accounts tab, up to the allowance for each court. Then CourtFlow switches to the next account.</div>
       <div id="plan" class="small" style="margin-top:10px">Select one or more green cells first.</div>
       <div id="bookingHelp" style="margin-top:10px"></div>
@@ -76,7 +79,7 @@
     </div>
   </section>
 
-  <div class="card"><h2>Activity</h2><div class="status" id="log">Ready.</div></div>
+  <details class="card debug-card"><summary>Technical activity</summary><div class="status" id="log" style="margin-top:10px">Ready.</div></details>
 </div>
 <script>
 const $=id=>document.getElementById(id);
@@ -118,6 +121,8 @@ async function findVenues(){
     const q={date:$('date').value,location:$('location').value.trim(),sport:'tennis',start:+$('start').value,end:+$('end').value};
     const d=await availability(q);state.facilities=(d.facilities||[]).sort((a,b)=>a.name.localeCompare(b.name));
     $('venue').innerHTML=state.facilities.length?state.facilities.map(f=>`<option value="${esc(f.id)}">${esc(f.name)}</option>`).join(''):'<option value="">No venues found</option>';
+    const west=state.facilities.find(f=>/west roxbury/i.test(f.name));if(west)$('venue').value=String(west.id);
+    setNextStep(1,'Choose the venue, then tap Show availability.');
     state.matrix=null;state.selected.clear();renderMatrix();renderSelectedSummary();
     log(`Found ${state.facilities.length} venue${state.facilities.length===1?'':'s'}.`);
   }catch(e){log('Venue search failed: '+e.message);$('venue').innerHTML='<option value="">Search failed</option>'}
@@ -148,7 +153,10 @@ async function loadCalendar(){
     const expected=Number(facility?.reservableCourtCount||0);
     if(expected>courts.length&&courts.every(c=>/court\s*\d+/i.test(c.name))){const used=new Set(courts.map(c=>Number((c.name.match(/\d+/)||[0])[0])));for(let i=1;i<=expected;i++)if(!used.has(i))courts.push({id:`missing:${i}`,name:`Court ${i}`,placeholder:true});courts.sort(naturalCourt)}
     const slots=[];for(const r of results){const availableIds=new Set((r.courts||[]).map(c=>String(c.id)));for(const c of courts){const available=!c.placeholder&&availableIds.has(String(c.id))&&r.status==='ok';slots.push({slotId:`${fid}:${c.id}:${$('date').value}:${r.start}`,facilityId:String(fid),facilityName:facility?.name||'Venue',courtId:String(c.id),courtName:c.name,date:$('date').value,start:r.start,end:r.start+60,available,unknown:r.status==='unknown',priceCents:0,reservationUrl:r.reservationUrl||'',searchLocation:$('location').value.trim()})}}
-    state.matrix={facility,courts,hours,slots};renderMatrix();log(`Loaded exact-court calendar: ${courts.length} court${courts.length===1?'':'s'} across ${hours.length} hour${hours.length===1?'':'s'}.`);
+    state.matrix={facility,courts,hours,slots};renderMatrix();
+    $('searchCard').classList.add('done');$('searchSummary').classList.remove('hidden');$('searchSummaryTitle').textContent=facility?.name||'Selected venue';$('searchSummaryMeta').textContent=`${$('date').value} · ${shortTime(start)} to ${shortTime(end)}`;
+    setNextStep(2,'Tap the green court/time cells you want.');
+    log(`Loaded exact-court calendar: ${courts.length} court${courts.length===1?'':'s'} across ${hours.length} hour${hours.length===1?'':'s'}.`);
   }catch(e){state.matrix=null;$('matrixMessage').textContent='Calendar load failed: '+e.message;log('Calendar load failed: '+e.message)}
   finally{btn.disabled=false;btn.textContent='Load court calendar'}
 }
@@ -159,9 +167,9 @@ function renderMatrix(){
   const {courts,hours,slots}=state.matrix,lookup=new Map(slots.map(s=>[cellKey(s.start,s.courtId),s]));
   let h='<thead><tr><th>Time</th>'+courts.map(c=>`<th>${esc(c.name)}</th>`).join('')+'</tr></thead><tbody>';
   for(const t of hours){h+=`<tr><td>${shortTime(t)}</td>`;for(const c of courts){const s=lookup.get(cellKey(t,c.id));const key=cellKey(t,c.id),selected=state.selected.has(key);let cls='unknown',label='?';if(s&&!s.unknown){cls=s.available?'available':'unavailable';label=s.available?'Available':'Unavailable'}if(selected){cls+=' selected';label='Selected'}h+=`<td><button class="cell ${cls}" ${s?.available?'data-cell="'+esc(key)+'"':''} title="${esc(c.name+' '+timeLabel(t))}">${label}</button></td>`}h+='</tr>'}h+='</tbody>';
-  $('matrix').innerHTML=h;$('matrixMessage').classList.add('hidden');$('matrixWrap').classList.remove('hidden');document.querySelectorAll('[data-cell]').forEach(b=>b.onclick=()=>{const k=b.dataset.cell;if(state.selected.has(k))state.selected.delete(k);else state.selected.add(k);renderMatrix();renderSelectedSummary()});
+  $('matrix').innerHTML=h;$('matrixMessage').classList.add('hidden');$('matrixWrap').classList.remove('hidden');document.querySelectorAll('[data-cell]').forEach(b=>b.onclick=()=>{const k=b.dataset.cell;if(state.selected.has(k))state.selected.delete(k);else state.selected.add(k);state.plan=[];renderPlan();renderMatrix();renderSelectedSummary()});
 }
-function renderSelectedSummary(){$('selectedSummary').textContent=`${state.selected.size} selected`}
+function renderSelectedSummary(){$('selectedSummary').textContent=`${state.selected.size} selected`;if(state.matrix){if(state.selected.size)setNextStep(3,`${state.selected.size} selected. Next: build the booking plan.`);else setNextStep(2,'Tap the green court/time cells you want.')}}
 $('clearSelected').onclick=()=>{state.selected.clear();renderMatrix();renderSelectedSummary();state.plan=[];renderPlan()};
 
 function selectedSlots(){if(!state.matrix)return[];const lookup=new Map(state.matrix.slots.map(s=>[cellKey(s.start,s.courtId),s]));return [...state.selected].map(k=>lookup.get(k)).filter(Boolean).sort((a,b)=>a.start-b.start||naturalCourt({name:a.courtName},{name:b.courtName}))}
@@ -172,7 +180,7 @@ async function buildPlan(){
   try{await refreshCurrentBookings(false);const limit=+$('limit').value,usage=new Map(),rows=[];for(const slot of slots){let assigned=null;for(const a of state.accounts){const key=`${a.id}|${slot.date}|${slot.courtName.toLowerCase()}`;if(!usage.has(key))usage.set(key,knownUsageFromBookings(slot.date,slot.courtName,a));if(usage.get(key)+60<=limit){assigned=a;usage.set(key,usage.get(key)+60);break}}rows.push(assigned?{start:slot.start,status:'planned',slot,account:assigned,label:assigned.name}:{start:slot.start,status:'unassigned',slot,label:'Account limit reached'})}state.plan=rows;renderPlan();const filled=rows.filter(r=>r.status==='planned').length;log(`Built booking plan for ${filled} of ${rows.length} selected slot${rows.length===1?'':'s'}.`)}catch(e){log('Plan build failed: '+e.message)}finally{btn.disabled=false;btn.textContent='Build plan from selected cells'}
 }
 $('buildPlan').onclick=buildPlan;
-function renderPlan(){if(!state.plan.length){$('plan').innerHTML='<div class="small">Select one or more green cells first.</div>';$('bookPlan').classList.add('hidden');return}$('plan').innerHTML=state.plan.map(r=>`<div class="plan-row"><div><b>${esc(r.slot.courtName)}</b><div class="small">${timeLabel(r.slot.start)} to ${timeLabel(r.slot.end)}</div></div><div class="small">${esc(r.slot.facilityName)}</div><div class="who ${r.status==='planned'||r.status==='booked'?'ok':'bad'}">${esc(r.status==='booked'?'Booked · '+r.account.name:r.status==='verification'?'Verify · '+r.account.name:r.status==='planned'?r.account.name:r.label)}</div></div>`).join('');$('bookPlan').classList.toggle('hidden',!state.plan.some(r=>r.status==='planned'))}
+function renderPlan(){if(!state.plan.length){$('plan').innerHTML='<div class="small">Select one or more green cells first.</div>';$('bookPlan').classList.add('hidden');$('buildPlan').classList.remove('hidden');return}$('plan').innerHTML=state.plan.map(r=>`<div class="plan-row"><div><b>${esc(r.slot.courtName)}</b><div class="small">${timeLabel(r.slot.start)} to ${timeLabel(r.slot.end)}</div></div><div class="small">${esc(r.slot.facilityName)}</div><div class="who ${r.status==='planned'||r.status==='booked'?'ok':'bad'}">${esc(r.status==='booked'?'Booked · '+r.account.name:r.status==='verification'?'Verify · '+r.account.name:r.status==='planned'?r.account.name:r.label)}</div></div>`).join('');const planned=state.plan.filter(r=>r.status==='planned').length;$('bookPlan').classList.toggle('hidden',!planned);$('buildPlan').classList.toggle('hidden',!!planned);$('bookPlan').textContent=planned===1?'Book 1 slot':`Book ${planned} slots`;if(planned)setNextStep(4,`Plan ready. Next: book ${planned} slot${planned===1?'':'s'}.`)}
 
 async function doBook(slot,account){const ss=await auth(account);return rpc('book',{accountId:account.id,sessionToken:ss.sessionToken,slot,idempotencyKey:crypto.randomUUID(),expectedPriceCents:slot.priceCents||0})}
 function verificationHelp(row,url){
@@ -222,7 +230,7 @@ async function pollRemoteBrowser(){
 async function startRemoteBrowser(row){
   if(!state.serverVault)return;
   if(state.remoteBrowser)return;
-  $('browserModal').classList.remove('hidden');$('browserStatus').textContent='Preparing a private PlayLocal browser…';$('browserFrame').removeAttribute('src');
+  $('browserModal').classList.remove('hidden');$('browserRetry').classList.add('hidden');$('browserStatus').textContent='Preparing a private PlayLocal browser…';$('browserFrame').removeAttribute('src');
   try{
     const ss=await auth(row.account);
     const ticket=await rpc('browser_ticket',{accountId:row.account.id,sessionToken:ss.sessionToken,slot:row.slot});
@@ -231,9 +239,10 @@ async function startRemoteBrowser(row){
     state.remoteBrowser={id:b.sessionId,key:b.sessionKey,viewport:b.viewport||{width:980,height:720},objectUrl:null};
     $('browserStatus').textContent=b.statusText||'Remote browser ready.';
     pollRemoteBrowser();
-  }catch(e){$('browserStatus').textContent='Could not open verification browser: '+e.message;log('Verification browser failed: '+e.message)}
+  }catch(e){$('browserStatus').textContent='Could not open verification browser: '+e.message;$('browserRetry').classList.remove('hidden');log('Verification browser failed: '+e.message)}
 }
 $('browserClose').onclick=closeRemoteBrowser;
+$('browserRetry').onclick=async()=>{await closeRemoteBrowser();const row=state.pendingVerification?.row;if(row)startRemoteBrowser(row)};
 $('browserUp').onclick=()=>sendBrowserInput({type:'wheel',deltaY:-560});
 $('browserDown').onclick=()=>sendBrowserInput({type:'wheel',deltaY:560});
 $('browserSendText').onclick=()=>{const v=$('browserText').value;if(v){sendBrowserInput({type:'text',text:v});$('browserText').value=''}};
@@ -244,7 +253,7 @@ $('browserView').addEventListener('wheel',e=>{if(!state.remoteBrowser)return;e.p
 async function verifyRow(row){const ss=await auth(row.account);return rpc('verify_booking',{accountId:row.account.id,sessionToken:ss.sessionToken,slot:row.slot})}
 async function checkPendingBooking(manual=false){const p=state.pendingVerification;if(!p||state.pendingCheckRunning)return false;state.pendingCheckRunning=true;try{for(let i=0;i<4;i++){const v=await verifyRow(p.row);if(v.confirmed){p.row.status='booked';state.pendingVerification=null;$('bookingHelp').innerHTML='';state.bookingCursor++;renderPlan();log(`Confirmed ${p.row.slot.courtName} ${timeLabel(p.row.start)} for ${p.row.account.name}.`);await refreshCurrentBookings(false);state.pendingCheckRunning=false;await continuePlanBooking();return true}if(i<3)await new Promise(r=>setTimeout(r,1500))}if(manual)log('That reservation is not showing in PlayLocal Activity yet.');return false}catch(e){if(manual)log('Reservation check failed: '+e.message);return false}finally{state.pendingCheckRunning=false}}
 async function continuePlanBooking(){if(state.pendingVerification)return;while(state.bookingCursor<state.bookingQueue.length){const row=state.bookingQueue[state.bookingCursor];try{const result=await doBook(row.slot,row.account);row.status='booked';state.bookingCursor++;renderPlan();log(`Booked ${row.slot.courtName} ${timeLabel(row.start)} with ${row.account.name}${result?.reconciled?' and confirmed in Activity':''}.`)}catch(e){if(e.code==='VERIFICATION_REQUIRED'){const url=e.data?.reservationUrl||row.slot.reservationUrl||'';row.status='verification';state.pendingVerification={row,url};renderPlan();log(`${row.slot.courtName} ${timeLabel(row.start)} needs PlayLocal browser verification for ${row.account.name}.`);if(url)verificationHelp(row,url);else $('bookingHelp').textContent='PlayLocal requires verification, but no continuation URL was returned.';return}row.status='failed';row.label=e.message;renderPlan();log(`Stopped at ${row.slot.courtName} ${timeLabel(row.start)}: ${e.message}`);return}}$('bookingHelp').innerHTML='<span class="ok"><b>All planned reservations are confirmed.</b></span>';log('All planned reservations are confirmed.');await refreshCurrentBookings(false)}
-$('bookPlan').onclick=async()=>{state.bookingQueue=state.plan.filter(r=>r.status==='planned');state.bookingCursor=0;state.pendingVerification=null;$('bookingHelp').innerHTML='';await continuePlanBooking()};
+$('bookPlan').onclick=async()=>{setNextStep(4,'Booking in progress. Follow the prompt below if PlayLocal asks for verification.');state.bookingQueue=state.plan.filter(r=>r.status==='planned');state.bookingCursor=0;state.pendingVerification=null;$('bookingHelp').innerHTML='';await continuePlanBooking()};
 window.addEventListener('focus',()=>{if(state.pendingVerification)setTimeout(()=>checkPendingBooking(false),700)});document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state.pendingVerification)setTimeout(()=>checkPendingBooking(false),700)});
 
 async function refreshCurrentBookings(showLog=true){state.remoteBookings=[];for(const a of state.accounts){try{const ss=await auth(a),d=await rpc('history',{accountId:a.id,sessionToken:ss.sessionToken});state.remoteBookings.push({account:a,data:d})}catch(e){state.remoteBookings.push({account:a,error:e.message})}}renderBookings();if(showLog)log(`Loaded current bookings for ${state.accounts.length} account${state.accounts.length===1?'':'s'}.`)}
@@ -278,6 +287,8 @@ async function unlockWithPassword(){
 $('siteLogin').onclick=unlockWithPassword;
 $('sitePassword').addEventListener('keydown',e=>{if(e.key==='Enter')unlockWithPassword()});
 
+function setNextStep(step,message){const el=$('nextStep');if(!el)return;el.innerHTML=`<b>Step ${step} of 4</b><span>${esc(message)}</span>`;}
+$('changeSearch').onclick=()=>{$('searchCard').classList.remove('done');$('searchSummary').classList.add('hidden');state.matrix=null;state.selected.clear();state.plan=[];renderMatrix();renderSelectedSummary();renderPlan();setNextStep(1,'Choose a date and find the venue.');$('searchCard').scrollIntoView({behavior:'smooth',block:'start'});};
 renderAccounts();renderSelectedSummary();renderPlan();
 (async()=>{
   try{

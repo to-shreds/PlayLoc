@@ -7,11 +7,10 @@ const PORT = Number(process.env.PORT || 10000);
 const MAIN_API = process.env.COURTFLOW_MAIN_API || 'https://courtflow-playlocal.onrender.com';
 const SHARED_SECRET = process.env.COURTFLOW_BROWSER_SECRET || '';
 const ALLOWED_ORIGIN = process.env.COURTFLOW_ALLOWED_ORIGIN || 'https://to-shreds.github.io';
-const VIEWPORT = { width: 980, height: 720, deviceScaleFactor: 1 };
+const VIEWPORT = { width: 430, height: 760, deviceScaleFactor: 1, isMobile: true, hasTouch: true };
 const SESSION_TTL_MS = 12 * 60 * 1000;
 const sessions = new Map();
 const usedNonces = new Map();
-let browserPromise = null;
 
 const app = express();
 app.disable('x-powered-by');
@@ -59,19 +58,13 @@ function verifyTicket(ticket) {
   return payload;
 }
 
-async function getBrowser() {
-  if (!browserPromise) {
-    browserPromise = puppeteer.launch({
-      args: [...chromium.args, '--disable-dev-shm-usage', '--no-first-run', '--no-default-browser-check'],
-      defaultViewport: VIEWPORT,
-      executablePath: await chromium.executablePath(),
-      headless: 'shell',
-    }).catch(err => {
-      browserPromise = null;
-      throw err;
-    });
-  }
-  return browserPromise;
+async function launchBrowser() {
+  return puppeteer.launch({
+    args: [...chromium.args, '--disable-dev-shm-usage', '--no-first-run', '--no-default-browser-check'],
+    defaultViewport: VIEWPORT,
+    executablePath: await chromium.executablePath(),
+    headless: 'shell',
+  });
 }
 
 async function fetchCredentials(accountId) {
@@ -229,18 +222,18 @@ async function closeSession(session) {
   session.closed = true;
   if (session.monitor) clearInterval(session.monitor);
   sessions.delete(session.id);
-  try { await session.context?.close(); } catch {}
+  try { await session.browser?.close(); } catch {}
 }
 
 app.get('/health', (req, res) => res.json({ ok: true, service: 'courtflow-browser' }));
 
 app.post('/session/start', async (req, res) => {
+  let browser = null;
   try {
     const payload = verifyTicket(req.body?.ticket);
     const credentials = await fetchCredentials(payload.accountId);
-    const browser = await getBrowser();
-    const context = await browser.createBrowserContext();
-    const page = await context.newPage();
+    browser = await launchBrowser();
+    const page = await browser.newPage();
     await page.setViewport(VIEWPORT);
     await page.setJavaScriptEnabled(true);
     await loginToPlayLocal(page, credentials.username, credentials.password);
@@ -249,7 +242,7 @@ app.post('/session/start', async (req, res) => {
     const id = crypto.randomBytes(18).toString('base64url');
     const key = crypto.randomBytes(24).toString('base64url');
     const session = {
-      id, key, page, context, payload,
+      id, key, page, browser, payload,
       state: 'verification',
       statusText: 'Opening PlayLocal verification…',
       createdAt: Date.now(),
@@ -265,6 +258,7 @@ app.post('/session/start', async (req, res) => {
     session.monitor = setInterval(() => inspect(session), 650);
     res.json({ ok: true, sessionId: id, sessionKey: key, state: session.state, statusText: session.statusText, viewport: VIEWPORT });
   } catch (err) {
+    try { await browser?.close(); } catch {}
     console.error('start session failed:', err?.stack || err);
     res.status(err.status || 500).json({ ok: false, message: err.message || String(err) });
   }
