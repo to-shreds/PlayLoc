@@ -1,0 +1,38 @@
+name: Inspect PlayLocal search markup
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/inspect-playlocal.yml
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - run: pip install curl_cffi beautifulsoup4
+      - name: Inspect
+        shell: python
+        run: |
+          from curl_cffi import requests
+          from bs4 import BeautifulSoup
+          import re
+          s=requests.Session(impersonate='chrome')
+          s.get('https://www.playlocal.com/')
+          p={'search[date]':'2026-09-17','search[location]':'Boston','search[sport]':'tennis','search[time]':'evening','commit':'Find Courts'}
+          r=s.get('https://www.playlocal.com/facilities',params=p,headers={'Referer':'https://www.playlocal.com/facilities'})
+          print('STATUS',r.status_code,'URL',r.url,'LEN',len(r.text))
+          d=BeautifulSoup(r.text,'html.parser')
+          print('TITLE',d.title.get_text(' ',strip=True) if d.title else '')
+          print('HEADINGS',[(x.name,x.get_text(' ',strip=True)[:160]) for x in d.find_all(['h1','h2','h3','h4'])][:40])
+          print('FACILITY LINKS')
+          for a in d.find_all('a',href=True):
+            h=a['href']
+            if 'facilit' in h.lower() or 'reserv' in h.lower(): print(repr(h),repr(a.get_text(' ',strip=True)[:200]))
+          print('TIME TEXT')
+          for x in d.find_all(string=re.compile(r'\b(?:am|pm)\b',re.I))[:100]: print(repr(str(x).strip()[:250]))
+          print('DATA ATTRS')
+          n=0
+          for x in d.find_all(True):
+            attrs={k:v for k,v in x.attrs.items() if k.startswith('data-')}
+            if attrs:
+              print(x.name,attrs,repr(x.get_text(' ',strip=True)[:160])); n+=1
+              if n>=100: break
