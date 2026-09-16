@@ -1,0 +1,27 @@
+name: Inspect real PlayLocal court form
+on:
+  workflow_dispatch:
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install -r requirements.txt >/dev/null
+      - name: Inspect public reservation form structure
+        shell: python
+        run: |
+          import sys,os,re
+          sys.path.insert(0,os.getcwd())
+          from playlocal_server import browser_session,browser_get,soup,BASE
+          s=browser_session(); browser_get(s,BASE+'/',retry_403=False)
+          params={'search[date]':'2026-09-20','search[location]':'West Roxbury, MA','search[reservable_type]':'TennisCourt','search[sport]':'tennis','search[time]':'early_morning','commit':'Search Courts'}
+          r=browser_get(s,BASE+'/facilities',params=params,referer=BASE+'/facilities',retry_403=False)
+          d=soup(r.text); box=next(x for x in d.select('li[data-role="facility"]') if x.get('data-id')=='22')
+          href=box.find('a',href=re.compile(r'/facilities/22/reservations/new')).get('href')
+          p=browser_get(s,BASE+href+'&time=7am&date=2026-09-20',referer=r.url,retry_403=False)
+          q=soup(p.text)
+          print('URL',p.url)
+          for i,f in enumerate(q.find_all('form')):
+            print('FORM',i,'action=',f.get('action'),'class=',f.get('class'),'id=',f.get('id'))
+            for el in f.find_all(['select','input','label'])[:80]:
+              print('EL',el.name,'type=',el.get('type'),'name=',el.get('name'),'id=',el.get('id'),'value=',el.get('value'),'for=',el.get('for'),'class=',el.get('class'),'text=',re.sub(r'\s+',' ',el.get_text(' ',strip=True))[:180])
