@@ -1,0 +1,41 @@
+name: Use authenticated PlayLocal browser session
+
+on:
+  push:
+    paths:
+      - 'scripts/use_authenticated_browser_session.py'
+      - '.github/workflows/use-authenticated-browser-session.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply authenticated-session bridge
+        run: python scripts/use_authenticated_browser_session.py
+      - name: Verify source
+        run: |
+          python -m py_compile playlocal_server.py
+          node --check browser_service/server.js
+          python - <<'PY'
+          from pathlib import Path
+          s=Path('playlocal_server.py').read_text()
+          b=Path('browser_service/server.js').read_text()
+          assert 'BROWSER_BRIDGES' in s
+          assert "'/browser-session'" in s
+          assert 'browser_session_material' in s
+          assert 'fetchSessionMaterial' in b
+          assert 'applySessionMaterial' in b
+          assert 'loginToPlayLocal' not in b
+          PY
+      - name: Commit authenticated-session bridge
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add playlocal_server.py browser_service/server.js
+          git commit -m "Transfer authenticated PlayLocal session into remote browser"
+          git push
