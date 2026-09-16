@@ -1,0 +1,39 @@
+name: Follow exact PlayLocal reservation link
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/follow-reservation-link.yml
+      - scripts/follow_reservation_link.py
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply patch
+        run: python scripts/follow_reservation_link.py
+      - name: Verify
+        run: |
+          python -m py_compile playlocal_server.py
+          python - <<'PY'
+          import re
+          from pathlib import Path
+          s=Path('index.html').read_text()
+          m=re.search(r'<script>(.*)</script>',s,re.S)
+          assert m
+          Path('/tmp/courtflow.js').write_text(m.group(1))
+          py=Path('playlocal_server.py').read_text()
+          assert 'reservationHref' in py
+          assert 'RESERVATION_LINK_NOT_FOUND' in py
+          assert 'reservationHref' in s
+          PY
+          node --check /tmp/courtflow.js
+      - name: Commit
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add playlocal_server.py index.html
+          git commit -m "Follow PlayLocal exact reservation link"
+          git push
