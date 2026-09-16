@@ -38,9 +38,10 @@ new = r'''function verificationHelp(row,url){
 }
 '''
 
-if old not in h:
+if old in h:
+    h = h.replace(old, new, 1)
+elif 'CourtFlowNative.startBooking' not in h:
     raise SystemExit('verificationHelp block not found')
-h = h.replace(old, new, 1)
 
 marker = "window.addEventListener('focus',()=>{\n"
 insert = r'''window.addEventListener('courtflow-native-booking-complete',()=>{
