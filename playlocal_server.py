@@ -12,11 +12,12 @@ IDEM = {}
 LOCK = threading.RLock()
 
 class ApiError(Exception):
-    def __init__(self, code, message, status=400, definitive=False):
+    def __init__(self, code, message, status=400, definitive=False, data=None):
         self.code = code
         self.message = message
         self.status = status
         self.definitive = definitive
+        self.data = data or {}
         super().__init__(message)
 
 def soup(text):
@@ -323,15 +324,19 @@ def parse_reservations(html):
                          'status': 'cancelled' if re.search(r'cancelled|canceled', text, re.I) else 'current'})
     return rows
 
-def history(req):
-    s = get_session(req['sessionToken'], req['accountId'])
+def _history_for_session(s):
     r = browser_get(s, BASE + '/user/reservations', referer=BASE + '/', retry_403=True)
     if urlparse(r.url).path == '/sign_in':
         raise ApiError('AUTH_REJECTED', 'PlayLocal session expired.', 401, True)
     if r.status_code == 403:
         raise ApiError('PLAYLOCAL_FORBIDDEN', 'PlayLocal refused the Activity request from the hosted connector (HTTP 403).', 502)
     r.raise_for_status()
-    rows = parse_reservations(r.text)
+    return parse_reservations(r.text)
+
+
+def history(req):
+    s = get_session(req['sessionToken'], req['accountId'])
+    rows = _history_for_session(s)
     return {
         'asOf': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
         'source': '/user/reservations',
@@ -692,6 +697,45 @@ def set_fields(form, slot):
             out[name] = el.get('value') or '1'
     return out
 
+def _verification_gate(d, form=None):
+    text = clean(d.get_text(' ', strip=True))
+    if re.search(r'please\s+wait\s+for\s+verification\s+to\s+complete|complete\s+verification|verify\s+you\s+are\s+human', text, re.I):
+        return True
+    scope = form or d
+    for el in scope.find_all(['input', 'textarea', 'div']):
+        hay = clean(' '.join(str(el.get(k) or '') for k in ('name', 'id', 'class', 'data-sitekey', 'data-callback')))
+        if re.search(r'turnstile|captcha|cf[-_ ]?challenge|challenge[-_ ]?response', hay, re.I):
+            return True
+    return False
+
+
+def _slot_start_label(slot):
+    h = int(slot['start']) // 60
+    return f'{h % 12 or 12}:00 {"PM" if h >= 12 else "AM"}'
+
+
+def _reservation_row_matches_slot(row, slot):
+    if row.get('date') and row.get('date') != slot.get('date'):
+        return False
+    expected = _slot_start_label(slot).upper()
+    if row.get('start') and str(row.get('start')).upper() != expected:
+        return False
+    text = clean((row.get('title') or '') + ' ' + (row.get('text') or '')).lower()
+    wanted = clean(slot.get('courtName') or '').lower()
+    if wanted and re.search(r'court\s*\d+', wanted, re.I):
+        # History usually contains the court name. If it does, require the exact court;
+        # if it omits court text entirely, date/time is still a useful unique match.
+        has_any_court = bool(re.search(r'court\s*\d+', text, re.I))
+        if has_any_court and wanted not in text:
+            return False
+    return bool(row.get('date') or row.get('start'))
+
+
+def _reconcile_created_reservation(s, slot):
+    rows = _history_for_session(s)
+    return next((row for row in rows if _reservation_row_matches_slot(row, slot)), None)
+
+
 def book(req):
     key = req['idempotencyKey']
     with LOCK:
@@ -725,14 +769,45 @@ def book(req):
     detected = max(prices) if prices else 0
     if detected > 0:
         raise ApiError('INTERACTIVE_REQUIRED', 'This reservation has a charge; automatic paid booking is not enabled.', 409, True)
+    # PlayLocal currently gates the final reservation submission with browser-side
+    # verification. A raw HTTP POST cannot legitimately manufacture that token.
+    if _verification_gate(d, form):
+        raise ApiError(
+            'VERIFICATION_REQUIRED',
+            'PlayLocal requires browser verification before it will create this reservation.',
+            409,
+            True,
+            {'reservationUrl': booking_url},
+        )
+
     r = submit(s, p, form, set_fields(form, slot))
-    body = clean(soup(r.text).get_text(' ', strip=True))
-    if re.search(r'error|unable|failed|not available|already (?:reserved|booked)', body, re.I):
-        raise ApiError('BOOKING_REJECTED', body[:300], 409, True)
+    rd = soup(r.text)
+    body = clean(rd.get_text(' ', strip=True))
     m = re.search(r'/reservations/(\d+)', urlparse(r.url).path)
-    if not (m or re.search(r'reservation (?:confirmed|created|booked)|successfully reserved|confirmation', body, re.I)):
-        raise ApiError('UNKNOWN_OUTCOME', 'PlayLocal responded, but CourtFlow could not prove that the reservation was created.', 502)
-    result = {'id': m.group(1) if m else 'playlocal-' + key[:12], **slot, 'accountId': req['accountId'], 'status': 'confirmed', 'idempotencyKey': key}
+    confirmed = bool(m or re.search(r'reservation (?:confirmed|created|booked)|successfully reserved|confirmation', body, re.I))
+
+    reconciled = None
+    if not confirmed:
+        # The Activity endpoint is authoritative for this account. Check it before
+        # ever reporting an ambiguous result.
+        reconciled = _reconcile_created_reservation(s, slot)
+        confirmed = reconciled is not None
+
+    if not confirmed:
+        if _verification_gate(rd):
+            raise ApiError(
+                'VERIFICATION_REQUIRED',
+                'PlayLocal did not create the reservation because browser verification is required.',
+                409,
+                True,
+                {'reservationUrl': booking_url},
+            )
+        if re.search(r'error|unable|failed|not available|already (?:reserved|booked)', body, re.I):
+            raise ApiError('BOOKING_REJECTED', body[:300], 409, True)
+        raise ApiError('BOOKING_REJECTED', 'PlayLocal did not create this reservation.', 409, True)
+
+    resolved_id = m.group(1) if m else (reconciled.get('id') if reconciled else 'playlocal-' + key[:12])
+    result = {'id': resolved_id, **slot, 'accountId': req['accountId'], 'status': 'confirmed', 'idempotencyKey': key, 'reconciled': bool(reconciled and not m)}
     with LOCK:
         IDEM[key] = result
     return result
@@ -826,7 +901,10 @@ class Handler(SimpleHTTPRequestHandler):
             status = 200
         except ApiError as e:
             print(f'API error {e.code}: {e.message}', flush=True)
-            payload = {'version': 1, 'ok': False, 'error': {'code': e.code, 'message': e.message, 'definitive': e.definitive}}
+            err = {'code': e.code, 'message': e.message, 'definitive': e.definitive}
+            if e.data:
+                err['data'] = e.data
+            payload = {'version': 1, 'ok': False, 'error': err}
             status = e.status
         except requests.RequestException as e:
             payload = {'version': 1, 'ok': False, 'error': {'code': 'PLAYLOCAL_CONNECTION', 'message': 'Could not reach PlayLocal: ' + str(e), 'definitive': False}}
