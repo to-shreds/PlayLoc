@@ -68,7 +68,6 @@ if not start_pat.search(s):
     raise SystemExit('session start block not found')
 s = start_pat.sub(new_start, s)
 
-# Fix accidental spacing from replacement function boundary.
 s = s.replace("app.get('/session/:id/status' , requireSession", "app.get('/session/:id/status', requireSession")
 
 old_status = "res.json({ ok: true, state: s.state, statusText: s.statusText, viewport: VIEWPORT, ageSeconds: Math.round((Date.now() - s.createdAt) / 1000) });"
@@ -83,26 +82,21 @@ if old_frame not in s:
     raise SystemExit('frame block not found')
 s = s.replace(old_frame, new_frame, 1)
 
-# Remove stale browserPromise reference in SIGTERM.
 s = s.replace("  try { const b = await browserPromise; await b?.close(); } catch {}\n", "")
 p.write_text(s)
 
-# Patch frontend UX and frame polling.
 p = Path('index.html')
 h = p.read_text()
 
-# Add loading placeholder in browser view.
 h = h.replace('<div class="browser-view" id="browserView"><img id="browserFrame" alt="Interactive PlayLocal verification browser"></div>',
               '<div class="browser-view" id="browserView"><div id="browserLoading" style="color:#dbe7e1;text-align:center;padding:24px"><div class="spinner"></div><div style="margin-top:10px">Starting PlayLocal…</div></div><img id="browserFrame" class="hidden" alt="Interactive PlayLocal verification browser"></div>')
 
-# Replace server-vault verification help with automatic status only.
 old_help = """    help.innerHTML=`<div class=\"notice\"><b>Interactive verification required</b><div style=\"margin-top:6px\">CourtFlow will open PlayLocal in a temporary remote browser already signed into <b>${esc(a.name)}</b>. Complete only the verification PlayLocal presents. Credentials stay on Render.</div><div style=\"margin-top:10px\"><button class=\"btn primary\" id=\"openRemoteBrowser\">Open verification browser</button> <button class=\"btn\" id=\"checkPending\">Check & continue</button></div></div>`;\n    $('openRemoteBrowser').onclick=()=>startRemoteBrowser(row);\n    $('checkPending').onclick=()=>checkPendingBooking(true);\n    startRemoteBrowser(row);\n    return;"""
 new_help = """    help.innerHTML=`<div class=\"notice\"><b>Verification needed for ${esc(a.name)}</b><div style=\"margin-top:6px\">Opening PlayLocal verification now. Complete the verification when it appears. CourtFlow will submit and continue automatically.</div></div>`;\n    startRemoteBrowser(row);\n    return;"""
 if old_help not in h:
     raise SystemExit('verification help block not found')
 h = h.replace(old_help, new_help, 1)
 
-# Replace poll function body wholesale.
 poll_pat = re.compile(r"async function pollRemoteBrowser\(\)\{.*?\n\}\nasync function startRemoteBrowser", re.S)
 new_poll = r'''async function pollRemoteBrowser(){
   const rb=state.remoteBrowser;if(!rb)return;
@@ -146,13 +140,11 @@ if not poll_pat.search(h):
     raise SystemExit('poll function not found')
 h = poll_pat.sub(new_poll, h)
 
-# Enhance start initialization visuals and failure recovery.
 h = h.replace("$('browserModal').classList.remove('hidden');$('browserStatus').textContent='Preparing a private PlayLocal browser…';$('browserFrame').removeAttribute('src');",
               "$('browserModal').classList.remove('hidden');$('browserStatus').textContent='Starting the private PlayLocal browser…';$('browserRetry').classList.add('hidden');$('browserFrame').removeAttribute('src');$('browserFrame').classList.add('hidden');$('browserLoading').classList.remove('hidden');")
 h = h.replace("}catch(e){$('browserStatus').textContent='Could not open verification browser: '+e.message;log('Verification browser failed: '+e.message)}",
               "}catch(e){state.remoteBrowser=null;$('browserStatus').textContent='Could not open verification browser: '+e.message;$('browserRetry').classList.remove('hidden');$('browserLoading').classList.add('hidden');log('Verification browser failed: '+e.message)}")
 
-# Retry should close any stale session then restart current pending row.
 old_retry = "$('browserRetry').onclick=()=>{const p=state.pendingVerification;closeRemoteBrowser().then(()=>{if(p)startRemoteBrowser(p.row)})};"
 if old_retry in h:
     h = h.replace(old_retry, "$('browserRetry').onclick=async()=>{const p=state.pendingVerification;await closeRemoteBrowser();if(p)startRemoteBrowser(p.row)};", 1)
@@ -161,3 +153,5 @@ else:
     h = h.replace(anchor, "$('browserRetry').onclick=async()=>{const p=state.pendingVerification;await closeRemoteBrowser();if(p)startRemoteBrowser(p.row)};\n"+anchor, 1)
 
 p.write_text(h)
+
+# v2 trigger: keep verification startup responsive on slow Render cold starts.
