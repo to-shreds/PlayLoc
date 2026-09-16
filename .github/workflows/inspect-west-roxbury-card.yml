@@ -1,0 +1,32 @@
+name: Inspect West Roxbury reservation card
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/inspect-west-roxbury-card.yml
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install -r requirements.txt >/dev/null
+      - name: Print exact facility card
+        run: |
+          python - <<'PY'
+          from playlocal_server import search_pages,soup
+          q={'date':'2026-09-25','location':'Wellesley MA','sport':'tennis','start':420,'end':1200}
+          for p in search_pages(q):
+              d=soup(p.text)
+              for box in d.select('li[data-role="facility"]'):
+                  h=box.find(['h4','h3','h2','h1'])
+                  name=h.get_text(' ',strip=True) if h else ''
+                  if 'West Roxbury High School' in name:
+                      print('PAGE_URL',p.url)
+                      print('CARD_HTML_START')
+                      print(str(box)[:12000])
+                      print('CARD_HTML_END')
+                      raise SystemExit(0)
+          raise SystemExit('West Roxbury card not found')
+          PY
