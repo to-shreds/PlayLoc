@@ -1,0 +1,27 @@
+name: Inspect PlayLocal slot selection behavior
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/inspect-slot-selection.yml
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install -r requirements.txt >/dev/null
+      - name: Inspect application JS around slot selection
+        shell: python
+        run: |
+          import os,sys,re
+          sys.path.insert(0,os.getcwd())
+          from playlocal_server import browser_session,browser_get,BASE
+          s=browser_session()
+          u='https://d34os8bs8ae6o7.cloudfront.net/assets/application-26f68a8051bbb4a9a5d3ea521106dc0d029b4fbdd96aa52d0f651bf51e9f6351.js'
+          t=browser_get(s,u,referer=BASE+'/facilities',retry_403=False).text
+          needles=['slot-available','reservation-selector','slot-unavailable','results-card','data-role=\"reservation-selector\"','data-role="reservation-selector"','Find Courts','reserve']
+          for needle in needles:
+            print('\nNEEDLE',needle)
+            for i,m in enumerate(re.finditer(re.escape(needle),t,re.I)):
+              if i>=15: break
+              p=m.start(); print('OCC',i,t[max(0,p-1800):p+3200].replace('\n',' ')[:5000])
