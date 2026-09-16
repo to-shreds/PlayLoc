@@ -1,0 +1,107 @@
+name: Fix PlayLocal browser session transfer
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Repair cookie transfer and browser lifecycle
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('browser_service/server.js')
+          s=p.read_text()
+          old="""async function applySessionMaterial(page, material) {
+  await page.setUserAgent(material.userAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36');
+  await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
+  const cookies = (material.cookies || []).map(c => ({
+    name: String(c.name || ''),
+    value: String(c.value || ''),
+    domain: String(c.domain || '.playlocal.com'),
+    path: String(c.path || '/'),
+    secure: !!c.secure,
+  })).filter(c => c.name);
+  if (!cookies.length) throw new Error('Authenticated PlayLocal session contained no cookies.');
+  await page.setCookie(...cookies);
+}
+"""
+          new="""async function applySessionMaterial(page, material) {
+  await page.setUserAgent(material.userAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36');
+  await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
+  const cookies = (material.cookies || []).map(c => ({
+    name: String(c.name || ''),
+    value: String(c.value || ''),
+    domain: String(c.domain || '.playlocal.com'),
+    path: String(c.path || '/'),
+    secure: !!c.secure,
+    httpOnly: !!c.httpOnly,
+    ...(c.sameSite ? { sameSite: c.sameSite } : {}),
+  })).filter(c => c.name);
+  if (!cookies.length) throw new Error('Authenticated PlayLocal session contained no cookies.');
+  await page.goto('https://www.playlocal.com/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await page.setCookie(...cookies);
+  await page.goto('https://www.playlocal.com/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+}
+"""
+          if old not in s: raise SystemExit('applySessionMaterial anchor missing')
+          s=s.replace(old,new)
+          s=s.replace("""    await prepareReservation(page, payload);
+    if (new URL(page.url()).pathname === '/sign_in') {
+      throw new Error('PlayLocal did not accept the transferred authenticated session. Please retry.');
+    }
+""","""    const before = await page.evaluate(() => ({ href: location.href, hasPassword: !!document.querySelector('input[type=\"password\"]'), title: document.title, text: (document.body?.innerText || '').slice(0, 400) }));
+    if (new URL(page.url()).pathname === '/sign_in' || before.hasPassword) {
+      throw new Error('PlayLocal did not accept the transferred authenticated session. Please retry.');
+    }
+    await prepareReservation(page, payload);
+    if (new URL(page.url()).pathname === '/sign_in' || await page.$('input[type=\"password\"]')) {
+      throw new Error('PlayLocal redirected the transferred session to sign-in. Please retry.');
+    }
+""")
+          s=s.replace("""process.on('SIGTERM', async () => {
+  for (const s of sessions.values()) await closeSession(s);
+  try { const b = await browserPromise; await b?.close(); } catch {}
+  process.exit(0);
+});
+""","""process.on('SIGTERM', async () => {
+  for (const s of sessions.values()) await closeSession(s);
+  process.exit(0);
+});
+""")
+          p.write_text(s)
+
+          p=Path('playlocal_server.py'); s=p.read_text()
+          old="""                cookies.append({
+                    'name': name, 'value': value, 'domain': domain, 'path': path,
+                    'secure': bool(getattr(c, 'secure', False)),
+                })
+"""
+          new="""                rest = getattr(c, '_rest', {}) or {}
+                same_site = rest.get('SameSite') or rest.get('samesite')
+                item = {
+                    'name': name, 'value': value, 'domain': domain, 'path': path,
+                    'secure': bool(getattr(c, 'secure', False)),
+                    'httpOnly': bool(rest.get('HttpOnly') or rest.get('httponly')),
+                }
+                if same_site in ('Strict', 'Lax', 'None'):
+                    item['sameSite'] = same_site
+                cookies.append(item)
+"""
+          if old not in s: raise SystemExit('cookie anchor missing')
+          s=s.replace(old,new)
+          p.write_text(s)
+          PY
+      - name: Verify syntax
+        run: |
+          node --check browser_service/server.js
+          python -m py_compile playlocal_server.py
+      - name: Commit
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add browser_service/server.js playlocal_server.py
+          git commit -m "Fix authenticated PlayLocal browser session transfer"
+          git push
