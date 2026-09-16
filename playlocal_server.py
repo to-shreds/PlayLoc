@@ -12,6 +12,7 @@ IDEM = {}
 LOCK = threading.RLock()
 SITE_TOKENS = {}
 SITE_TOKEN_TTL = 12 * 60 * 60
+BROWSER_BRIDGES = {}
 
 class ApiError(Exception):
     def __init__(self, code, message, status=400, definitive=False, data=None):
@@ -180,9 +181,21 @@ def issue_browser_ticket(req):
         'slotId', 'facilityId', 'facilityName', 'courtId', 'courtName', 'date',
         'start', 'end', 'priceCents', 'searchLocation'
     )}
+    bridge_id = secrets.token_urlsafe(24)
+    bridge_exp = time.time() + 10 * 60
+    with LOCK:
+        expired = [k for k, v in BROWSER_BRIDGES.items() if v.get('exp', 0) <= time.time()]
+        for k in expired:
+            BROWSER_BRIDGES.pop(k, None)
+        BROWSER_BRIDGES[bridge_id] = {
+            'accountId': account_id,
+            'sessionToken': session_token,
+            'exp': bridge_exp,
+        }
     payload = {
-        'exp': int(time.time()) + 10 * 60,
+        'exp': int(bridge_exp),
         'nonce': secrets.token_urlsafe(18),
+        'bridgeId': bridge_id,
         'accountId': account_id,
         'slot': safe_slot,
         'reservationUrl': booking_url,
@@ -198,6 +211,48 @@ def browser_credentials(account_id):
     if not account:
         raise ApiError('ACCOUNT_NOT_FOUND', 'That server account is not configured.', 404, True)
     return {'username': account['username'], 'password': account['password']}
+
+
+def browser_session_material(bridge_id, account_id):
+    bridge_id = str(bridge_id or '')
+    account_id = str(account_id or '')
+    now = time.time()
+    with LOCK:
+        item = BROWSER_BRIDGES.pop(bridge_id, None)
+    if not item or item.get('exp', 0) <= now or item.get('accountId') != account_id:
+        raise ApiError('BROWSER_SESSION', 'The temporary PlayLocal browser session expired. Please retry verification.', 401, True)
+    sess = get_session(item.get('sessionToken', ''), account_id)
+    cookies = []
+    cookie_store = getattr(sess, 'cookies', None)
+    jar = getattr(cookie_store, 'jar', None)
+    if jar is not None:
+        try:
+            for c in jar:
+                name = str(getattr(c, 'name', '') or '')
+                value = str(getattr(c, 'value', '') or '')
+                if not name:
+                    continue
+                domain = str(getattr(c, 'domain', '') or '.playlocal.com')
+                path = str(getattr(c, 'path', '') or '/')
+                cookies.append({
+                    'name': name, 'value': value, 'domain': domain, 'path': path,
+                    'secure': bool(getattr(c, 'secure', False)),
+                })
+        except TypeError:
+            pass
+    if not cookies and cookie_store is not None:
+        try:
+            values = cookie_store.get_dict() if hasattr(cookie_store, 'get_dict') else dict(cookie_store)
+            for name, value in values.items():
+                cookies.append({
+                    'name': str(name), 'value': str(value),
+                    'domain': '.playlocal.com', 'path': '/', 'secure': True,
+                })
+        except Exception:
+            pass
+    if not cookies:
+        raise ApiError('BROWSER_SESSION', 'CourtFlow could not transfer the authenticated PlayLocal session.', 502, True)
+    return {'cookies': cookies, 'userAgent': UA}
 
 
 def login(account_id, username, password):
@@ -1040,6 +1095,35 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_error(404)
 
     def do_POST(self):
+        if self.path == '/browser-session':
+            try:
+                expected = os.environ.get('COURTFLOW_BROWSER_SECRET', '')
+                supplied = self.headers.get('Authorization', '')
+                if supplied.lower().startswith('bearer '):
+                    supplied = supplied[7:]
+                if not expected or not secrets.compare_digest(str(supplied), str(expected)):
+                    payload = {'ok': False, 'message': 'Unauthorized.'}
+                    status = 401
+                else:
+                    n = int(self.headers.get('Content-Length', '0'))
+                    req = json.loads(self.rfile.read(n) or b'{}')
+                    material = browser_session_material(req.get('bridgeId'), req.get('accountId'))
+                    payload = {'ok': True, **material}
+                    status = 200
+            except ApiError as e:
+                payload = {'ok': False, 'message': e.message}
+                status = e.status
+            except Exception:
+                payload = {'ok': False, 'message': 'Browser session transfer error.'}
+                status = 500
+            raw = json.dumps(payload).encode()
+            self.send_response(status)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Cache-Control', 'no-store')
+            self.send_header('Content-Length', str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+            return
         if self.path == '/browser-credentials':
             try:
                 expected = os.environ.get('COURTFLOW_BROWSER_SECRET', '')

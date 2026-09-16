@@ -67,48 +67,34 @@ async function launchBrowser() {
   });
 }
 
-async function fetchCredentials(accountId) {
-  const r = await fetch(MAIN_API + '/browser-credentials', {
+async function fetchSessionMaterial(bridgeId, accountId) {
+  const r = await fetch(MAIN_API + '/browser-session', {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       'authorization': 'Bearer ' + SHARED_SECRET,
     },
-    body: JSON.stringify({ accountId }),
+    body: JSON.stringify({ bridgeId, accountId }),
   });
-  const b = await r.json().catch(() => null);
-  if (!r.ok || !b?.ok || !b?.username || !b?.password) {
-    throw new Error(b?.message || 'Could not retrieve the assigned PlayLocal account from CourtFlow.');
+  const data = await r.json().catch(() => null);
+  if (!r.ok || !data?.ok || !Array.isArray(data.cookies) || !data.cookies.length) {
+    throw new Error(data?.message || 'Could not transfer the authenticated PlayLocal session.');
   }
-  return b;
+  return data;
 }
 
-async function loginToPlayLocal(page, username, password) {
-  await page.goto('https://www.playlocal.com/sign_in', { waitUntil: 'domcontentloaded', timeout: 30000 });
-  await page.waitForSelector('input[type="password"]', { timeout: 15000 });
-  const found = await page.evaluate(({ username, password }) => {
-    const email = document.querySelector('input[type="email"], input[name*="email" i], input[name*="user" i]');
-    const pass = document.querySelector('input[type="password"]');
-    if (!email || !pass) return false;
-    const set = (el, value) => {
-      el.focus();
-      el.value = value;
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-      el.dispatchEvent(new Event('change', { bubbles: true }));
-    };
-    set(email, username);
-    set(pass, password);
-    const form = pass.form || email.form || document.querySelector('form');
-    if (!form) return false;
-    if (form.requestSubmit) form.requestSubmit(); else form.submit();
-    return true;
-  }, { username, password });
-  if (!found) throw new Error('PlayLocal sign-in fields were not recognized.');
-  await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => null);
-  if (new URL(page.url()).pathname === '/sign_in') {
-    const stillHasPassword = await page.$('input[type="password"]');
-    if (stillHasPassword) throw new Error('PlayLocal rejected the assigned account or returned to sign-in.');
-  }
+async function applySessionMaterial(page, material) {
+  await page.setUserAgent(material.userAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36');
+  await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
+  const cookies = (material.cookies || []).map(c => ({
+    name: String(c.name || ''),
+    value: String(c.value || ''),
+    domain: String(c.domain || '.playlocal.com'),
+    path: String(c.path || '/'),
+    secure: !!c.secure,
+  })).filter(c => c.name);
+  if (!cookies.length) throw new Error('Authenticated PlayLocal session contained no cookies.');
+  await page.setCookie(...cookies);
 }
 
 async function prepareReservation(page, payload) {
@@ -231,13 +217,17 @@ app.post('/session/start', async (req, res) => {
   let browser = null;
   try {
     const payload = verifyTicket(req.body?.ticket);
-    const credentials = await fetchCredentials(payload.accountId);
+    if (!payload.bridgeId) throw new Error('Browser ticket is missing its authenticated session bridge.');
+    const material = await fetchSessionMaterial(payload.bridgeId, payload.accountId);
     browser = await launchBrowser();
     const page = await browser.newPage();
     await page.setViewport(VIEWPORT);
     await page.setJavaScriptEnabled(true);
-    await loginToPlayLocal(page, credentials.username, credentials.password);
+    await applySessionMaterial(page, material);
     await prepareReservation(page, payload);
+    if (new URL(page.url()).pathname === '/sign_in') {
+      throw new Error('PlayLocal did not accept the transferred authenticated session. Please retry.');
+    }
 
     const id = crypto.randomBytes(18).toString('base64url');
     const key = crypto.randomBytes(24).toString('base64url');
