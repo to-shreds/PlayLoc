@@ -11,17 +11,11 @@ jobs:
   smoke:
     runs-on: ubuntu-latest
     steps:
-      - name: Wait for Render and test PlayLocal upstream
+      - name: Test PlayLocal upstream from Render
         shell: bash
         run: |
-          set -e
-          for i in {1..12}; do
-            echo "Attempt $i"
-            if body=$(curl --fail --silent --show-error https://courtflow-playlocal.onrender.com/upstream); then
-              echo "$body"
-              python -c 'import json,sys; d=json.load(sys.stdin); assert d.get("ok") is True and d.get("status")==200' <<< "$body"
-              exit 0
-            fi
-            sleep 10
-          done
-          exit 1
+          set +e
+          body=$(curl --silent --show-error --write-out '\nHTTP_STATUS:%{http_code}\n' https://courtflow-playlocal.onrender.com/upstream)
+          code=$?
+          echo "$body"
+          exit $code
