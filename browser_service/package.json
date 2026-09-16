@@ -1,0 +1,14 @@
+{
+  "name": "courtflow-browser-service",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@sparticuz/chromium": "^141.0.0",
+    "express": "^5.1.0",
+    "puppeteer-core": "^24.22.3"
+  }
+}
