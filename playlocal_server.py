@@ -1,5 +1,5 @@
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, urlencode, parse_qsl
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 import hashlib, json, os, re, secrets, threading, time, requests
@@ -137,9 +137,10 @@ def search_pages(q, sess=None):
         params = {
             'search[date]': q.get('date', ''),
             'search[location]': q.get('location', ''),
+            'search[reservable_type]': 'TennisCourt',
             'search[sport]': q.get('sport', 'tennis'),
             'search[time]': part,
-            'commit': 'Find Courts',
+            'commit': 'Search Courts',
         }
         r = browser_get(s, BASE + '/facilities', params=params, referer=BASE + '/facilities', retry_403=True)
         if r.status_code == 403:
@@ -363,7 +364,10 @@ def _court_controls(form):
         if el.name == 'select':
             option_text = ' '.join(clean(o.get_text(' ', strip=True)) for o in el.find_all('option'))
         hay = clean(desc + ' ' + option_text)
-        if re.search(r'court', hay, re.I) or re.search(r'court[_\- ]?id', el.get('name') or '', re.I):
+        field_name = (el.get('name') or '') + ' ' + (el.get('id') or '')
+        if (re.search(r'court', hay, re.I)
+                or re.search(r'court[_\- ]?id', field_name, re.I)
+                or re.search(r'reservable[_\- ]?id', field_name, re.I)):
             controls.append(el)
     return controls
 
@@ -440,33 +444,75 @@ def _page_diagnostic(p, d):
     return f'url={p.url}; title={title}; forms={forms or ["none"]}; links={links or ["none"]}; text={body}'
 
 
+def _slot_time_minutes(text):
+    m = re.fullmatch(r'(\d{1,2})(?::(\d{2}))?\s*(am|pm)', clean(text), re.I)
+    if not m:
+        return None
+    h = int(m.group(1)) % 12 + (12 if m.group(3).lower() == 'pm' else 0)
+    return h * 60 + int(m.group(2) or 0)
+
+
+def _reservation_click_url(href, selected_time, selected_date):
+    """Mirror PlayLocal's facilities-page Reserve click handler exactly."""
+    parsed = urlparse(urljoin(BASE, href))
+    params = [(k, v) for k, v in parse_qsl(parsed.query, keep_blank_values=True)
+              if k not in ('time', 'date')]
+    params.extend([('time', clean(selected_time)), ('date', str(selected_date or ''))])
+    return parsed._replace(query=urlencode(params)).geturl()
+
+
 def _reservation_page_for_query(s, q, facility_id):
+    requested_start = int(q.get('start', 0) or 0)
+    requested_end = int(q.get('end', requested_start + 60) or (requested_start + 60))
     found_href = ''
     found_referer = ''
+    found_time = ''
+
     for sp in search_pages(q, sess=s):
         sd = soup(sp.text)
         for box in sd.select('li[data-role="facility"]'):
             if str(box.get('data-id') or '') != str(facility_id):
                 continue
             link = box.find('a', href=re.compile(r'/facilities/[^/]+/reservations/new'))
-            if link:
-                found_href = link.get('href', '')
-                found_referer = sp.url
-                break
+            selector = box.select_one('[data-role="reservation-selector"]')
+            if not link or not selector:
+                continue
+
+            choices = []
+            for node in selector.find_all('li', recursive=False):
+                classes = {str(x).lower() for x in node.get('class', [])}
+                if 'reserve' in classes or 'disabled' in classes or 'slot-closed' in classes:
+                    continue
+                text = clean(node.get_text(' ', strip=True))
+                minutes = _slot_time_minutes(text)
+                if minutes is None or minutes < requested_start or minutes >= requested_end:
+                    continue
+                choices.append((0 if minutes == requested_start else 1, minutes, text))
+
+            if not choices:
+                continue
+            choices.sort(key=lambda x: (x[0], x[1]))
+            found_time = choices[0][2]
+            found_href = link.get('href', '')
+            found_referer = sp.url
+            break
         if found_href:
             break
+
     if not found_href:
-        return None, None, None, '', ''
-    target = urljoin(BASE, found_href)
+        return None, None, None, '', '', '', ''
+
+    target = _reservation_click_url(found_href, found_time, q.get('date', ''))
     parsed = urlparse(target)
     if parsed.netloc not in ('www.playlocal.com', 'playlocal.com') or '/reservations/new' not in parsed.path:
         raise ApiError('COURT_OPTIONS', 'Invalid PlayLocal reservation link.', 400, True)
+
     p = browser_get(s, target, referer=found_referer, retry_403=True)
     if urlparse(p.url).path == '/sign_in':
         raise ApiError('AUTH_REJECTED', 'PlayLocal session expired.', 401, True)
     p.raise_for_status()
     d = soup(p.text)
-    return p, d, _find_reservation_form(d), found_href, found_referer
+    return p, d, _find_reservation_form(d), found_href, found_referer, found_time, target
 
 
 def court_options(req):
@@ -474,75 +520,55 @@ def court_options(req):
     facility_id = str(req.get('facilityId') or '')
     if not facility_id:
         raise ApiError('COURT_OPTIONS', 'A facility is required.')
+
     requested_date = str(req.get('date') or '')
+    requested_start = int(req.get('start', 0) or 0)
+    requested_end = int(req.get('end', requested_start + 60) or (requested_start + 60))
     q = {
         'date': requested_date,
         'location': req.get('location', ''),
         'sport': 'tennis',
-        'start': int(req.get('start', 0) or 0),
-        'end': int(req.get('end', 1440) or 1440),
+        'start': requested_start,
+        'end': requested_end,
         'facilityId': facility_id,
     }
 
-    p, d, form, href, referer = _reservation_page_for_query(s, q, facility_id)
-    requested_diag = ''
-    if p is not None and d is not None:
-        requested_diag = _page_diagnostic(p, d)
-    if form is not None:
-        courts = _extract_courts(form)
-        if courts:
-            return {
-                'facilityId': facility_id,
-                'courts': courts,
-                'requestedDate': requested_date,
-                'courtSourceDate': requested_date,
-                'selectedDateAccessible': True,
-                'reservationHref': href,
-                'reservationReferer': referer,
-            }
+    p, d, form, href, referer, selected_time, target = _reservation_page_for_query(s, q, facility_id)
+    if p is None:
+        raise ApiError(
+            'SLOT_UNAVAILABLE',
+            'PlayLocal does not show the selected start time as available at this facility.',
+            409,
+            True,
+        )
+    if form is None:
+        detail = _page_diagnostic(p, d)
+        print(f'Court lookup page diagnostic: {detail}', flush=True)
+        raise ApiError(
+            'UPSTREAM_CHANGED',
+            f'PlayLocal did not open its reservation form for {selected_time or "the selected time"}.',
+            502,
+        )
 
-    today = datetime.now().date()
-    probe_details = []
-    for offset in range(1, 8):
-        probe_date = (today + timedelta(days=offset)).isoformat()
-        if probe_date == requested_date:
-            continue
-        pq = dict(q)
-        pq['date'] = probe_date
-        try:
-            pp, pd, pf, phref, preferer = _reservation_page_for_query(s, pq, facility_id)
-        except ApiError:
-            raise
-        except Exception as e:
-            probe_details.append(f'{probe_date}: {type(e).__name__}')
-            continue
-        if pp is None or pd is None:
-            probe_details.append(f'{probe_date}: no Reserve link')
-            continue
-        if pf is not None:
-            courts = _extract_courts(pf)
-            if courts:
-                return {
-                    'facilityId': facility_id,
-                    'courts': courts,
-                    'requestedDate': requested_date,
-                    'courtSourceDate': probe_date,
-                    'selectedDateAccessible': False,
-                    'reservationHref': href or phref,
-                    'reservationReferer': referer or preferer,
-                    'notice': (
-                        f'PlayLocal is not currently opening its reservation form for {requested_date}. '
-                        f'The specific court list was loaded from {probe_date} instead. Exact-court '
-                        f'availability for {requested_date} cannot be verified until PlayLocal opens '
-                        f'the reservation form for that date.'
-                    ),
-                }
-        probe_details.append(f'{probe_date}: ' + _page_diagnostic(pp, pd)[:260])
+    courts = _extract_courts(form)
+    if not courts:
+        controls = []
+        for el in form.find_all(['select', 'input'])[:40]:
+            controls.append(f"{el.name}:{el.get('type','')}:{el.get('name','')}:{el.get('id','')}")
+        print('Court control diagnostic: ' + (', '.join(controls[:20]) or 'no form controls'), flush=True)
+        raise ApiError('UPSTREAM_CHANGED', 'PlayLocal opened the reservation form, but its court selector was not recognized.', 502)
 
-    detail = requested_diag or 'PlayLocal did not expose a Reserve link for the requested date.'
-    if probe_details:
-        detail += ' Probe results: ' + ' | '.join(probe_details[:3])
-    raise ApiError('UPSTREAM_CHANGED', 'PlayLocal did not expose a usable reservation form. ' + detail, 502)
+    return {
+        'facilityId': facility_id,
+        'courts': courts,
+        'requestedDate': requested_date,
+        'courtSourceDate': requested_date,
+        'selectedDateAccessible': True,
+        'selectedTime': selected_time,
+        'reservationHref': href,
+        'reservationReferer': referer,
+        'reservationUrl': target,
+    }
 
 
 def set_fields(form, slot):
@@ -618,23 +644,19 @@ def book(req):
     }, sess=s)
     if not any(x['available'] and x['start'] == slot['start'] for x in snap['slots']):
         raise ApiError('SLOT_UNAVAILABLE', 'PlayLocal no longer shows that slot as available.', 409, True)
-    href = str(slot.get('reservationHref') or '')
-    if href:
-        parsed = urlparse(urljoin(BASE, href))
-        if parsed.netloc not in ('www.playlocal.com', 'playlocal.com') or '/reservations/new' not in parsed.path:
-            raise ApiError('BOOKING_LINK', 'Invalid PlayLocal reservation link.', 400, True)
-        booking_url = urljoin(BASE, href)
-    else:
-        booking_url = f"{BASE}/facilities/{slot['facilityId']}/reservations/new?sport=tennis"
-    booking_referer = str(slot.get('reservationReferer') or BASE + '/facilities')
-    if booking_referer.startswith(BASE + '/facilities'):
-        browser_get(s, booking_referer, referer=BASE + '/facilities', retry_403=True)
-    p = browser_get(s, booking_url, referer=booking_referer, retry_403=True)
-    if urlparse(p.url).path == '/sign_in':
-        raise ApiError('AUTH_REJECTED', 'PlayLocal session expired.', 401, True)
-    p.raise_for_status()
-    d = soup(p.text)
-    form = _find_reservation_form(d)
+    booking_q = {
+        'date': slot['date'],
+        'location': slot.get('searchLocation', ''),
+        'sport': 'tennis',
+        'start': slot['start'],
+        'end': slot['end'],
+        'facilityId': slot['facilityId'],
+    }
+    p, d, form, _, _, selected_time, booking_url = _reservation_page_for_query(
+        s, booking_q, slot['facilityId']
+    )
+    if p is None:
+        raise ApiError('SLOT_UNAVAILABLE', 'PlayLocal no longer shows that exact time as available.', 409, True)
     if not form:
         detail = _page_diagnostic(p, d)
         raise ApiError('UPSTREAM_CHANGED', 'PlayLocal reservation form was not found. ' + detail, 502)
