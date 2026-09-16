@@ -1,0 +1,32 @@
+name: Inspect PlayLocal embedded reservable data
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/inspect-reservable-data.yml
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install -r requirements.txt >/dev/null
+      - name: Inspect search HTML for court ids and endpoints
+        shell: python
+        run: |
+          import os,sys,re
+          sys.path.insert(0,os.getcwd())
+          from playlocal_server import browser_session,browser_get,BASE
+          s=browser_session()
+          r=browser_get(s,BASE+'/facilities',params={
+            'search[date]':'2026-09-25','search[location]':'West Roxbury, MA','search[reservable_type]':'TennisCourt','search[sport]':'tennis','search[time]':'early_morning','commit':'Search Courts'
+          },referer=BASE+'/facilities',retry_403=False)
+          t=r.text
+          print('URL',r.url,'STATUS',r.status_code,'LEN',len(t))
+          for needle in ['reservable','reservables','TennisCourt','court_id','reservable_id','facility_id','data-id="22"','West Roxbury High School']:
+            print('\nNEEDLE',needle)
+            for i,m in enumerate(re.finditer(re.escape(needle),t,re.I)):
+              if i>=30: break
+              p=m.start(); print('OCC',i,t[max(0,p-1000):p+2200].replace('\n',' ')[:3200])
+          urls=sorted(set(re.findall(r'["\']([^"\']*(?:reservab|court)[^"\']*)["\']',t,re.I)))
+          print('\nCANDIDATE_URLS_OR_STRINGS')
+          for x in urls[:200]: print(x)
