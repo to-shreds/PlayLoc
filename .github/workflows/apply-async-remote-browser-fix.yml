@@ -25,9 +25,13 @@ jobs:
           import re
           h=Path('index.html').read_text()
           m=re.search(r'<script>(.*)</script>',h,re.S)
+          if not m:
+              raise SystemExit('frontend script not found')
           Path('/tmp/courtflow.js').write_text(m.group(1))
-          assert 'frameReady' in Path('browser_service/server.js').read_text()
-          assert 'Starting the private PlayLocal browser' in h
+          s=Path('browser_service/server.js').read_text()
+          assert 'frameReady' in s
+          assert 'initializeSession' in s
+          assert 'Opening PlayLocal verification now' in h
           PY
           node --check /tmp/courtflow.js
       - name: Commit patch
