@@ -10,51 +10,41 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: pip install -r requirements.txt >/dev/null
-      - name: Inspect scripts and reservation hooks
+      - name: Inspect embedded court data
         shell: python
         run: |
           import os, sys, re
           sys.path.insert(0, os.getcwd())
           from playlocal_server import browser_session, browser_get, soup, BASE
-          from urllib.parse import urljoin
           s=browser_session()
-          print('COOKIES_INITIAL', [(c.name, len(c.value)) for c in s.cookies.jar])
-          home=browser_get(s, BASE+'/', retry_403=False)
-          print('COOKIES_AFTER_HOME', [(c.name, len(c.value)) for c in s.cookies.jar])
-          params={'search[date]':'2026-09-25','search[location]':'Boston','search[sport]':'tennis','search[time]':'early_morning','commit':'Find Courts'}
-          r=browser_get(s, BASE+'/facilities', params=params, referer=BASE+'/facilities')
-          print('PAGE', r.url, r.status_code)
-          print('COOKIES_AFTER_SEARCH', [(c.name, len(c.value)) for c in s.cookies.jar])
+          browser_get(s, BASE+'/', retry_403=False)
+          params={
+            'search[date]':'2026-09-25',
+            'search[location]':'West Roxbury, MA',
+            'search[reservable_type]':'TennisCourt',
+            'search[sport]':'tennis',
+            'search[time]':'early_morning',
+            'commit':'Search Courts'
+          }
+          r=browser_get(s,BASE+'/facilities',params=params,referer=BASE+'/facilities',retry_403=False)
+          print('URL',r.url,'STATUS',r.status_code,'LEN',len(r.text))
           d=soup(r.text)
-          srcs=[]
-          for x in d.find_all('script', src=True):
-            u=urljoin(r.url,x['src'])
-            if u not in srcs: srcs.append(u)
-          print('SCRIPTS', *srcs, sep='\n')
-          needles=['reservations/new','reservation-selector','court_id','reservable','search[date]','friendly_date','reservation','facility_id']
-          for u in srcs:
-            try:
-              rr=browser_get(s,u,referer=r.url,retry_403=False)
-              txt=rr.text
-            except Exception as e:
-              print('SCRIPT_ERR',u,e); continue
-            hits=[]; low=txt.lower()
-            for n in needles:
-              pos=low.find(n.lower())
-              if pos>=0: hits.append((n, txt[max(0,pos-700):pos+1800].replace('\n',' ')[:2500]))
-            if hits:
-              print('\nASSET',u,'STATUS',rr.status_code,'LEN',len(txt))
-              for n,snip in hits: print('HIT',n,snip)
           for box in d.select('li[data-role="facility"]'):
             if str(box.get('data-id'))=='22':
-              print('\nWEST_ROXBURY_CARD',str(box)[:14000])
-          href='/facilities/22/reservations/new?sport=tennis'
-          variants=[
-            href,
-            href+'&date=2026-09-25',
-            href+'&search%5Bdate%5D=2026-09-25',
-            href+'&search%5Bdate%5D=2026-09-25&search%5Btime%5D=early_morning&search%5Blocation%5D=Boston',
-          ]
-          for u in variants:
-            rr=browser_get(s, BASE+u, referer=r.url, retry_403=False)
-            print('TRY',u,'=>',rr.status_code,rr.url,'HISTORY',[(x.status_code,x.headers.get('location')) for x in rr.history])
+              print('WEST_ROXBURY_CARD',str(box)[:20000])
+          t=r.text
+          for needle in ['reservable','reservables','TennisCourt','court_id','reservable_id','facility_id','data-id="22"','West Roxbury High School']:
+            print('\nNEEDLE',needle)
+            for i,m in enumerate(re.finditer(re.escape(needle),t,re.I)):
+              if i>=40: break
+              p=m.start(); print('OCC',i,t[max(0,p-1200):p+2600].replace('\n',' ')[:3800])
+          print('\nLINKS')
+          for a in d.find_all('a',href=True):
+            href=a.get('href',''); txt=' '.join(a.stripped_strings)
+            if '22' in href or re.search(r'court|reserv',href+' '+txt,re.I):
+              print(txt,'=>',href,dict(a.attrs))
+          print('\nDATA_ATTRS')
+          for el in d.find_all(True):
+            attrs={k:v for k,v in el.attrs.items() if k.startswith('data-')}
+            if attrs and ('22' in str(attrs) or re.search(r'court|reserv',str(attrs),re.I)):
+              print(el.name,attrs,str(el)[:700])
