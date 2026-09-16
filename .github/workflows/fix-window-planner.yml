@@ -1,0 +1,46 @@
+name: Fix Window planner
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/fix-window-planner.yml
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch planner
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('index.html')
+          s=p.read_text()
+          old="""$('planBtn').onclick=async()=>{try{if(!state.accounts.length)throw Error('Add at least one account.');let q={location:'',sport:'tennis',date:$('pdate').value,start:+$('pstart').value,end:+$('pend').value,facilityId:$('facility').value};let d=await availability(q);state.facilities=d.facilities;state.slots=d.slots;let court=$('court').value,limit=+$('limit').value,usage=Object.fromEntries(state.accounts.map(a=>[a.id,0])),rows=[];for(let tt=q.start;tt<q.end;tt+=60){let s=d.slots.find(x=>String(x.courtId)===String(court)&&x.start===tt);if(!s||!s.available){rows.push({status:'gap',start:tt});continue}let a=state.accounts.find(a=>usage[a.id]+60<=limit);if(!a){rows.push({status:'gap',start:tt});continue}usage[a.id]+=60;rows.push({status:'planned',start:tt,slot:s,account:a})}state.plan=rows;$('plan').innerHTML=rows.map(r=>`<div class=\"planrow\"><span>${t(r.start)}</span><span class=\"${r.status==='planned'?'ok':'bad'}\">${r.status==='planned'?esc(r.account.name):'Gap'}</span></div>`).join('');$('bookPlan').classList.toggle('hidden',!rows.some(r=>r.status==='planned'));log('Plan built.')}catch(e){log('Plan failed: '+e.message)}};"""
+          new="""$('planBtn').onclick=async()=>{try{if(!state.accounts.length)throw Error('Add at least one account.');let facilityId=$('facility').value,court=$('court').value,location=$('loc').value.trim();if(!facilityId)throw Error('Search first, then choose a facility.');let q={location,sport:'tennis',date:$('pdate').value,start:+$('pstart').value,end:+$('pend').value,facilityId};let d=await availability(q);state.facilities=d.facilities;state.slots=d.slots;let limit=+$('limit').value,usage=Object.fromEntries(state.accounts.map(a=>[a.id,0])),rows=[];for(let tt=q.start;tt<q.end;tt+=60){let s=d.slots.find(x=>String(x.courtId)===String(court)&&x.start===tt);if(!s||!s.available){rows.push({status:'unavailable',start:tt,label:'Unavailable'});continue}let a=state.accounts.find(a=>usage[a.id]+60<=limit);if(!a){rows.push({status:'limit',start:tt,label:'Account limit reached'});continue}usage[a.id]+=60;rows.push({status:'planned',start:tt,slot:s,account:a,label:a.name})}state.plan=rows;$('plan').innerHTML=rows.map(r=>`<div class=\"planrow\"><span>${t(r.start)}</span><span class=\"${r.status==='planned'?'ok':'bad'}\">${r.status==='planned'?esc(r.account.name):esc(r.label)}</span></div>`).join('');$('bookPlan').classList.toggle('hidden',!rows.some(r=>r.status==='planned'));let filled=rows.filter(r=>r.status==='planned').length;log(`Plan built: ${filled} of ${rows.length} hour${rows.length===1?'':'s'} assigned.`)}catch(e){log('Plan failed: '+e.message)}};"""
+          if old not in s:
+              raise SystemExit('Planner block did not match current index.html')
+          p.write_text(s.replace(old,new,1))
+      - name: Verify frontend script syntax and fix
+        shell: bash
+        run: |
+          python - <<'PY'
+          import re, pathlib
+          s=pathlib.Path('index.html').read_text()
+          assert "location:$('loc').value" not in s
+          assert "location=$('loc').value.trim()" in s
+          assert "label:'Unavailable'" in s
+          assert "label:'Account limit reached'" in s
+          m=re.search(r'<script>(.*)</script>',s,re.S)
+          assert m
+          pathlib.Path('/tmp/courtflow.js').write_text(m.group(1))
+          PY
+          node --check /tmp/courtflow.js
+      - name: Commit fix
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add index.html
+          git commit -m "Fix Window planner availability lookup and gap labels"
+          git push
