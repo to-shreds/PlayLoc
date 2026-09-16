@@ -150,44 +150,70 @@ def search_pages(q, sess=None):
 
 def parse_facilities_page(page, q, wanted, start, end, facilities, slots):
     d = soup(page.text)
-    for box in d.select('li[data-role="facility"]'):
-        fid = str(box.get('data-id') or '')
+    for box in d.select('[data-role="facility"]'):
+        fid = str(box.get('data-id') or '').strip()
         if not fid:
             link = box.find('a', href=re.compile(r'/facilities/[^/]+/reservations/new'))
             m = re.search(r'/facilities/([^/]+)/reservations/new', link.get('href', '') if link else '')
-            fid = m.group(1) if m else ''
-        if not fid or (wanted and fid != wanted):
+            if not m:
+                continue
+            fid = m.group(1)
+        if wanted and fid != wanted:
             continue
-        heading = box.find(['h4','h3','h2','h1'])
+
+        heading = box.find(['h1', 'h2', 'h3', 'h4', 'h5'])
         name = clean(heading.get_text(' ', strip=True)) if heading else 'Facility ' + fid
-        text = clean(box.get_text(' ', strip=True))
-        price_node = box.select_one('[data-role="price"]')
-        price_text = clean(price_node.get_text(' ', strip=True)) if price_node else text
+        address_node = box.find(attrs={'data-role': 'address'})
+        address = clean(address_node.get_text(' ', strip=True)) if address_node else ''
+        price_node = box.find(attrs={'data-role': 'price'})
+        price_text = clean(price_node.get_text(' ', strip=True)) if price_node else clean(box.get_text(' ', strip=True))
         price_match = re.search(r'\$(\d+(?:\.\d{1,2})?)', price_text)
         price = int(round(float(price_match.group(1)) * 100)) if price_match else 0
-        reservable = box.select_one('[data-role="reservable-number"]')
-        if reservable and clean(reservable.get_text(strip=True)).isdigit():
-            count = int(clean(reservable.get_text(strip=True)))
+
+        reservable_node = box.find(attrs={'data-role': 'reservable-number'})
+        if reservable_node and clean(reservable_node.get_text(' ', strip=True)).isdigit():
+            count = int(clean(reservable_node.get_text(' ', strip=True)))
         else:
-            court_match = re.search(r'(\d+)\s+courts?\s*\((\d+)\s+reservable', text, re.I)
-            count = int(court_match.group(2)) if court_match else 1
-        courts = [{'id': f'{fid}:court:{i}', 'name': f'Court {i}'} for i in range(1, max(1, count) + 1)]
-        facilities[fid] = {'id': fid, 'name': name, 'courts': courts}
-        selector = box.select_one('[data-role="reservation-selector"]')
-        selector_text = clean(selector.get_text(' ', strip=True)) if selector else ''
-        pat = re.compile(r'(\d{1,2})(?::00)?\s*(am|pm)(?:\s+(Not Available|Unavailable|Closed|Full|Booked))?', re.I)
-        for mt in pat.finditer(selector_text):
-            h = int(mt.group(1)) % 12 + (12 if mt.group(2).lower() == 'pm' else 0)
-            st = h * 60
-            if st < start or st >= end: continue
-            avail = not bool(mt.group(3))
+            court_text_node = box.find(attrs={'data-role': 'courts'})
+            court_text = clean(court_text_node.get_text(' ', strip=True)) if court_text_node else clean(box.get_text(' ', strip=True))
+            court_match = re.search(r'\(\s*(\d+)\s+reservable', court_text, re.I)
+            count = int(court_match.group(1)) if court_match else 1
+        count = max(1, count)
+        courts = [{'id': f'{fid}:court:{i}', 'name': f'Court {i}'} for i in range(1, count + 1)]
+        facilities[fid] = {'id': fid, 'name': name, 'address': address, 'courts': courts}
+
+        selector = box.find(attrs={'data-role': 'reservation-selector'}) or box
+        selector_text = clean(selector.get_text(' ', strip=True))
+        time_pattern = re.compile(
+            r'\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b(?:\s+(Not Available|Unavailable|Closed|Full|Booked))?',
+            re.I,
+        )
+        seen_times = set()
+        for mt in time_pattern.finditer(selector_text):
+            hour = int(mt.group(1)) % 12 + (12 if mt.group(3).lower() == 'pm' else 0)
+            minute = int(mt.group(2) or 0)
+            st = hour * 60 + minute
+            if st in seen_times or st < start or st >= end:
+                continue
+            seen_times.add(st)
+            avail = not bool(mt.group(4))
             for c in courts:
                 key = (fid, c['id'], st)
-                row = {'slotId': f'{fid}:{c["id"]}:{q.get("date")}:{st}', 'facilityId': fid,
-                       'facilityName': name, 'courtId': c['id'], 'courtName': c['name'],
-                       'date': q.get('date'), 'start': st, 'end': st + 60,
-                       'available': avail, 'priceCents': price}
-                if key not in slots or avail: slots[key] = row
+                row = {
+                    'slotId': f'{fid}:{c["id"]}:{q.get("date")}:{st}',
+                    'facilityId': fid,
+                    'facilityName': name,
+                    'facilityAddress': address,
+                    'courtId': c['id'],
+                    'courtName': c['name'],
+                    'date': q.get('date'),
+                    'start': st,
+                    'end': st + 60,
+                    'available': avail,
+                    'priceCents': price,
+                }
+                if key not in slots or avail:
+                    slots[key] = row
 
 def availability(q, sess=None):
     wanted = str(q.get('facilityId') or '')
