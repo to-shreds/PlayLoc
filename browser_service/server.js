@@ -230,6 +230,14 @@ async function initializeSession(session, dependencies = {}) {
     const page = await browser.newPage();
     if (session.closed) { await page.close(); return; }
     session.page = page;
+    page.on('framenavigated', frame => {
+      if (frame === page.mainFrame() && !session.closed) {
+        session.prepared = false;
+        session.selectedCourtId = '';
+        session.frameReady = false;
+        session.courtStableSince = 0;
+      }
+    });
     await page.setViewport(VIEWPORT);
     await page.setJavaScriptEnabled(true);
     if (session.readOnly) {
@@ -296,6 +304,7 @@ app.post('/session/start', async (req, res) => {
       id, key, page: null, browser: null, payload,
       initializing: true, frameReady: false, submissionAttempted: false,
       readOnly: req.body?.readOnly === true,
+      courtStableSince: 0,
       state: 'starting',
       statusText: 'Starting the private PlayLocal browser…',
       createdAt: Date.now(),
