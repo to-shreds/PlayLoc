@@ -295,6 +295,26 @@ async function closeSession(session) {
 
 app.get('/health', (req, res) => res.json({ ok: true, service: 'courtflow-browser' }));
 
+app.get('/health/deep', async (req, res) => {
+  let context = null;
+  try {
+    const browser = await getBrowser();
+    context = await browser.createBrowserContext();
+    const page = await context.newPage();
+    await page.setViewport(VIEWPORT);
+    await page.goto('data:text/html,<title>CourtFlow Deep Health</title><h1>ok</h1>', { waitUntil: 'domcontentloaded', timeout: 15000 });
+    const title = await page.title();
+    const image = await page.screenshot({ type: 'jpeg', quality: 68, fullPage: false, captureBeyondViewport: false });
+    if (title !== 'CourtFlow Deep Health' || !image || image.length < 100) throw new Error('Chromium deep health check returned an invalid result.');
+    res.json({ ok: true, service: 'courtflow-browser', chromium: 'ready', isolatedContext: true, frameBytes: image.length });
+  } catch (err) {
+    console.error('Deep health failed:', err?.stack || err);
+    res.status(500).json({ ok: false, service: 'courtflow-browser', message: err.message || String(err) });
+  } finally {
+    try { await context?.close(); } catch {}
+  }
+});
+
 async function initializeSession(session) {
   let browser = null;
   try {
