@@ -4,11 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>CourtFlow</title>
+<meta name="courtflow-build" content="verification-lifecycle-2">
 <style>
 :root{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#17261f;background:#f3f6f4;--green:#147a55;--green2:#dff4e9;--red:#a63131;--red2:#f9e2e2;--blue:#235ea7;--blue2:#dce9fb;--border:#d9e2dc;--muted:#6d7a73}*{box-sizing:border-box}body{margin:0}.wrap{max-width:1200px;margin:auto;padding:18px}.top{display:flex;align-items:center;justify-content:space-between;gap:14px}.brand{font-size:28px;font-weight:850;letter-spacing:-.5px}.sub{color:var(--muted);font-size:13px}.pill{border-radius:999px;padding:7px 11px;background:#e6efe9;font-size:13px}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0}.tabs button,.btn{border:0;border-radius:10px;padding:10px 14px;background:#e3e9e5;color:#17261f;font:inherit;cursor:pointer}.tabs button.active,.btn.primary{background:var(--green);color:#fff}.btn.danger{background:#fae0e0;color:#7f1e1e}.btn:disabled{opacity:.55;cursor:not-allowed}.page.hidden,.hidden{display:none}.card{background:#fff;border:1px solid var(--border);border-radius:16px;padding:16px;box-shadow:0 2px 10px #00000008;margin-bottom:14px}.card h2{font-size:19px;margin:0 0 12px}.controls{display:grid;grid-template-columns:1.2fr 1fr .8fr .8fr auto;gap:10px;align-items:end}.controls.second{grid-template-columns:1.7fr .7fr auto auto;margin-top:10px}.field label{display:block;font-size:12px;font-weight:750;margin:0 0 5px}.field input,.field select{width:100%;border:1px solid #cbd6cf;border-radius:9px;padding:10px;background:#fff;font:inherit}.small{font-size:12px;color:var(--muted)}.notice{padding:10px 12px;border-radius:10px;background:#eef4f0;font-size:13px;margin-top:10px}.legend{display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:9px 0}.swatch{width:14px;height:14px;border-radius:4px;display:inline-block;vertical-align:-2px;margin-right:5px}.swatch.green{background:var(--green2);border:1px solid #80c5a7}.swatch.red{background:var(--red2);border:1px solid #d7a0a0}.swatch.blue{background:var(--blue2);border:2px solid var(--blue)}.matrix-wrap{overflow:auto;border:1px solid var(--border);border-radius:12px;max-height:64vh;background:#fff}.matrix{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%}.matrix th,.matrix td{border-right:1px solid var(--border);border-bottom:1px solid var(--border);padding:7px;text-align:center;min-width:104px}.matrix th{background:#f6f8f7;font-size:12px;position:sticky;top:0;z-index:3}.matrix th:first-child{left:0;z-index:4}.matrix td:first-child{position:sticky;left:0;background:#fff;z-index:2;font-weight:750;min-width:84px}.matrix tr:last-child td{border-bottom:0}.matrix th:last-child,.matrix td:last-child{border-right:0}.cell{display:block;width:100%;min-height:46px;border:0;border-radius:9px;padding:6px;font:inherit;font-weight:750}.cell.available{background:var(--green2);color:#12613f;cursor:pointer}.cell.unavailable{background:var(--red2);color:#8a2929;cursor:default}.cell.unknown{background:#ecefee;color:#6c7470;cursor:default}.cell.selected{background:var(--blue2);color:#164d91;outline:2px solid var(--blue);outline-offset:-2px}.cell .tiny{display:block;font-size:10px;font-weight:600;opacity:.8;margin-top:2px}.plan-row,.account-row,.booking-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;align-items:center;padding:10px 0;border-top:1px solid #edf1ee}.plan-row:first-child,.account-row:first-child,.booking-row:first-child{border-top:0}.plan-row .who{text-align:right;font-weight:750}.ok{color:var(--green)}.bad{color:var(--red)}.status{white-space:pre-wrap;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;background:#0d1712;color:#d4f4e4;padding:12px;border-radius:10px;min-height:82px;max-height:280px;overflow:auto}.two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px}.account-row{grid-template-columns:1fr auto}.booking-row{grid-template-columns:1fr 1fr auto}.selected-summary{font-weight:750;margin-left:auto}.spinner{display:inline-block;width:15px;height:15px;border:2px solid #ffffff66;border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;vertical-align:-2px;margin-right:6px}@keyframes spin{to{transform:rotate(360deg)}}
 .step-banner{display:flex;gap:10px;align-items:center;background:#173f31;color:#fff;border-radius:14px;padding:12px 14px;margin-bottom:12px}.step-banner span{opacity:.9}.search-summary{align-items:center;justify-content:space-between;gap:12px}.search-summary:not(.hidden){display:flex}.plan-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.plan-head h2{margin-right:auto!important}.debug-card summary{cursor:pointer;font-weight:750}.browser-instruction{flex:1 1 100%;font-size:13px;background:#eef4f0;padding:9px 10px;border-radius:9px}.browser-more{flex:1 1 100%}.browser-more summary{cursor:pointer;font-size:12px;color:var(--muted)}.browser-keyboard{display:flex;gap:7px;margin-top:8px}.browser-keyboard input{flex:1}.browser-status{font-size:13px!important;font-weight:650;margin-top:2px}
 .browser-modal{position:fixed;inset:0;background:#111c;z-index:900;display:flex;align-items:center;justify-content:center;padding:12px}.browser-modal.hidden{display:none}.browser-card{width:min(1040px,100%);height:min(860px,96vh);background:#fff;border-radius:16px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 18px 60px #0008}.browser-head{display:flex;gap:10px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--border)}.browser-head .grow{flex:1}.browser-view{flex:1;min-height:0;background:#1b1f1d;display:flex;align-items:center;justify-content:center;overflow:auto;touch-action:none}.browser-view img{max-width:100%;max-height:100%;object-fit:contain;cursor:crosshair;user-select:none;-webkit-user-drag:none}.browser-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:9px 12px;border-top:1px solid var(--border)}.browser-tools input{flex:1;min-width:160px;border:1px solid #cbd6cf;border-radius:8px;padding:8px}.browser-status{font-size:12px;color:var(--muted)}.site-gate{position:fixed;inset:0;background:#f3f6f4;z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px}.site-gate.hidden{display:none}.gate-card{width:min(420px,100%);background:#fff;border:1px solid var(--border);border-radius:18px;padding:22px;box-shadow:0 12px 40px #0002}.gate-card h1{margin:0 0 6px;font-size:25px}.gate-card input{width:100%;border:1px solid #cbd6cf;border-radius:9px;padding:11px;font:inherit;margin:12px 0}
-@media(max-width:820px){.wrap{padding:9px}.top{align-items:flex-start}.brand{font-size:24px}.sub{display:none}.tabs{margin:10px 0}.controls,.controls.second,.two-col{grid-template-columns:1fr 1fr}.controls .wide,.controls.second .wide{grid-column:1/-1}.card{padding:12px;margin-bottom:9px}.step-banner{position:sticky;top:4px;z-index:20;padding:10px 11px}.plan-row{grid-template-columns:1fr 1fr}.plan-row .who{grid-column:1/-1;text-align:left}.booking-row{grid-template-columns:1fr}.matrix-wrap{max-height:52vh}.matrix th,.matrix td{min-width:86px;padding:5px}.matrix td:first-child,.matrix th:first-child{min-width:68px}.cell{min-height:42px;font-size:12px}.browser-modal{padding:0}.browser-card{width:100%;height:100dvh;border-radius:0}.browser-head{padding:8px 9px}.browser-view{min-height:0}.browser-view img{width:100%;height:auto;max-height:none;object-fit:contain}.browser-tools{padding:7px 9px;gap:6px}.browser-tools>.btn{padding:8px 12px}.browser-instruction{font-size:12px}.browser-keyboard{flex-wrap:wrap}.debug-card{margin-top:6px}}
+@media(max-width:820px){.wrap{padding:9px}.top{align-items:flex-start}.brand{font-size:24px}.sub{display:none}.tabs{margin:10px 0}.controls,.controls.second,.two-col{grid-template-columns:1fr 1fr}.controls .wide,.controls.second .wide{grid-column:1/-1}.card{padding:12px;margin-bottom:9px}.step-banner{position:sticky;top:4px;z-index:20;padding:10px 11px}.plan-row{grid-template-columns:1fr 1fr}.plan-row .who{grid-column:1/-1;text-align:left}.booking-row{grid-template-columns:1fr}.matrix-wrap{max-height:52vh}.matrix th,.matrix td{min-width:86px;padding:5px}.matrix td:first-child,.matrix th:first-child{min-width:68px}.cell{min-height:42px;font-size:12px}.browser-modal{padding:0}.browser-card{width:100%;height:100dvh;border-radius:0}.browser-head{padding:8px 9px}.browser-view{min-height:0}.browser-view img{width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain}.browser-tools{padding:7px 9px;gap:6px}.browser-tools>.btn{padding:8px 12px}.browser-instruction{font-size:12px}.browser-keyboard{flex-wrap:wrap}.debug-card{margin-top:6px}}
 </style>
 </head>
 <body>
@@ -180,7 +181,7 @@ async function buildPlan(){
   try{await refreshCurrentBookings(false);const limit=+$('limit').value,usage=new Map(),rows=[];for(const slot of slots){let assigned=null;for(const a of state.accounts){const key=`${a.id}|${slot.date}|${slot.courtName.toLowerCase()}`;if(!usage.has(key))usage.set(key,knownUsageFromBookings(slot.date,slot.courtName,a));if(usage.get(key)+60<=limit){assigned=a;usage.set(key,usage.get(key)+60);break}}rows.push(assigned?{start:slot.start,status:'planned',slot,account:assigned,label:assigned.name}:{start:slot.start,status:'unassigned',slot,label:'Account limit reached'})}state.plan=rows;renderPlan();const filled=rows.filter(r=>r.status==='planned').length;log(`Built booking plan for ${filled} of ${rows.length} selected slot${rows.length===1?'':'s'}.`)}catch(e){log('Plan build failed: '+e.message)}finally{btn.disabled=false;btn.textContent='Build plan from selected cells'}
 }
 $('buildPlan').onclick=buildPlan;
-function renderPlan(){if(!state.plan.length){$('plan').innerHTML='<div class="small">Select one or more green cells first.</div>';$('bookPlan').classList.add('hidden');$('buildPlan').classList.remove('hidden');return}$('plan').innerHTML=state.plan.map(r=>`<div class="plan-row"><div><b>${esc(r.slot.courtName)}</b><div class="small">${timeLabel(r.slot.start)} to ${timeLabel(r.slot.end)}</div></div><div class="small">${esc(r.slot.facilityName)}</div><div class="who ${r.status==='planned'||r.status==='booked'?'ok':'bad'}">${esc(r.status==='booked'?'Booked · '+r.account.name:r.status==='verification'?'Verify · '+r.account.name:r.status==='planned'?r.account.name:r.label)}</div></div>`).join('');const planned=state.plan.filter(r=>r.status==='planned').length;$('bookPlan').classList.toggle('hidden',!planned);$('buildPlan').classList.toggle('hidden',!!planned);$('bookPlan').textContent=planned===1?'Book 1 slot':`Book ${planned} slots`;if(planned)setNextStep(4,`Plan ready. Next: book ${planned} slot${planned===1?'':'s'}.`)}
+function renderPlan(){if(!state.plan.length){$('plan').innerHTML='<div class="small">Select one or more green cells first.</div>';$('bookPlan').classList.add('hidden');$('buildPlan').classList.remove('hidden');return}$('plan').innerHTML=state.plan.map(r=>`<div class="plan-row"><div><b>${esc(r.slot.courtName)}</b><div class="small">${timeLabel(r.slot.start)} to ${timeLabel(r.slot.end)}</div></div><div class="small">${esc(r.slot.facilityName)}</div><div class="who ${r.status==='planned'||r.status==='booked'?'ok':'bad'}">${esc(r.status==='booked'?'Booked · '+r.account.name:r.status==='verification'?'Verify · '+r.account.name:r.status==='planned'?r.account.name:r.label)}</div></div>`).join('');const planned=state.plan.filter(r=>r.status==='planned').length;$('bookPlan').classList.toggle('hidden',!planned);$('buildPlan').classList.toggle('hidden',!!planned);$('bookPlan').textContent=planned===1?'Book 1 slot':`Book ${planned} slots`;if(planned)setNextStep(4,`Plan ready. Next: book ${planned} slot${planned===1?'':'s'}.`);if(state.pendingVerification||state.bookingRunning){$('bookPlan').classList.add('hidden');$('buildPlan').classList.add('hidden');setNextStep(4,state.pendingVerification?'Booking paused: complete the PlayLocal verification.':'Booking in progress. Please wait.')}}
 
 async function doBook(slot,account){const ss=await auth(account);return rpc('book',{accountId:account.id,sessionToken:ss.sessionToken,slot,idempotencyKey:crypto.randomUUID(),expectedPriceCents:slot.priceCents||0})}
 function verificationHelp(row,url){
@@ -194,87 +195,105 @@ function verificationHelp(row,url){
   $('checkPending').onclick=()=>checkPendingBooking(true);
 }
 
-async function browserRequest(path,opts={}){
+let browserGeneration = 0;
+async function browserRequest(path, opts={}, rb=state.remoteBrowser){
   const headers={...(opts.headers||{})};
-  if(state.remoteBrowser?.key)headers['X-CourtFlow-Session']=state.remoteBrowser.key;
-  return fetch(BROWSER_SERVICE+path,{...opts,headers});
+  if(rb?.key)headers['X-CourtFlow-Session']=rb.key;
+  return fetch(BROWSER_SERVICE+path,{...opts,headers,signal:opts.signal||AbortSignal.timeout(30000)});
 }
-async function closeRemoteBrowser(){
+function verificationPaused(){
+  const row=state.pendingVerification?.row;
+  if(!row)return;
+  $('bookingHelp').innerHTML=`<div class="notice"><b>Booking paused for verification</b><div>${esc(row.slot.courtName)} at ${timeLabel(row.start)} using ${esc(row.account.name)} has not been confirmed.</div><button id="resumeVerification" class="btn primary">Resume verification</button></div>`;
+  $('resumeVerification').onclick=()=>startRemoteBrowser(row);
+  renderPlan();
+}
+async function closeRemoteBrowser(quiet=false){
+  ++browserGeneration;
   if(state.browserPoll){clearTimeout(state.browserPoll);state.browserPoll=null}
-  const rb=state.remoteBrowser;state.remoteBrowser=null;$('browserModal').classList.add('hidden');
-  if(rb?.id&&rb?.key){try{await fetch(BROWSER_SERVICE+`/session/${encodeURIComponent(rb.id)}`,{method:'DELETE',headers:{'X-CourtFlow-Session':rb.key}})}catch{}}
+  const rb=state.remoteBrowser;state.remoteBrowser=null;
+  $('browserModal').classList.add('hidden');document.body.style.overflow='';
+  if(rb?.objectUrl)URL.revokeObjectURL(rb.objectUrl);
+  if(rb?.id&&rb?.key){try{await browserRequest(`/session/${encodeURIComponent(rb.id)}`,{method:'DELETE'},rb)}catch{}}
+  if(!quiet)verificationPaused();
 }
 async function sendBrowserInput(payload){
   const rb=state.remoteBrowser;if(!rb)return;
-  try{await browserRequest(`/session/${encodeURIComponent(rb.id)}/input`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)})}catch(e){$('browserStatus').textContent='Remote browser input failed: '+e.message}
+  try{
+    const response=await browserRequest(`/session/${encodeURIComponent(rb.id)}/input`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)},rb);
+    if(!response.ok){const d=await response.json();throw Error(d.message||'Input failed.')}
+  }catch(e){$('browserStatus').textContent='Verification: '+e.message}
 }
 async function pollRemoteBrowser(){
   const rb=state.remoteBrowser;if(!rb)return;
   try{
-    const sr=await browserRequest(`/session/${encodeURIComponent(rb.id)}/status`);const s=await sr.json();
+    const sr=await browserRequest(`/session/${encodeURIComponent(rb.id)}/status`,{},rb);
+    const s=await sr.json();
+    if(state.remoteBrowser!==rb)return;
     if(!sr.ok||!s.ok)throw Error(s.message||'Remote browser session failed.');
-    $('browserStatus').textContent=s.statusText||s.state||'Waiting for PlayLocal…';
-    if(s.state==='confirmed'){
-      await closeRemoteBrowser();
-      if(state.pendingVerification)setTimeout(()=>checkPendingBooking(true),400);
-      return;
+    $('browserStatus').textContent=s.statusText||'Loading PlayLocal...';
+    if(s.state==='confirmed'||s.state==='submitting'){
+      if(!rb.lastCheck||Date.now()-rb.lastCheck>5000){
+        rb.lastCheck=Date.now();
+        if(await checkPendingBooking(false))return;
+      }
     }
     if(s.state==='failed'){
-      $('browserRetry').classList.remove('hidden');
-      $('browserLoading').classList.add('hidden');
-      log('Verification browser stopped: '+(s.statusText||'Unknown error'));
-      return;
+      $('browserRetry').classList.remove('hidden');$('browserLoading').classList.add('hidden');
+      log('Verification stopped: '+s.statusText);return;
     }
     if(s.frameReady){
-      const fr=await browserRequest(`/session/${encodeURIComponent(rb.id)}/frame?ts=${Date.now()}`);
-      if(fr.ok){
+      const fr=await browserRequest(`/session/${encodeURIComponent(rb.id)}/frame`,{},rb);
+      if(fr.status!==425){
+        if(!fr.ok)throw Error((await fr.json()).message||'Could not read the verification image.');
         const blob=await fr.blob();
-        if(state.remoteBrowser===rb){
-          if(rb.objectUrl)URL.revokeObjectURL(rb.objectUrl);
-          rb.objectUrl=URL.createObjectURL(blob);
-          $('browserFrame').src=rb.objectUrl;
-          $('browserFrame').classList.remove('hidden');
-          $('browserLoading').classList.add('hidden');
-        }
+        if(!blob.type.startsWith('image/'))throw Error('The server did not return an image.');
+        const nextUrl=URL.createObjectURL(blob);
+        const decoded=new Image();decoded.src=nextUrl;
+        try{await decoded.decode()}catch{URL.revokeObjectURL(nextUrl);throw Error('The verification image could not be decoded.')}
+        if(state.remoteBrowser!==rb){URL.revokeObjectURL(nextUrl);return}
+        const previous=rb.objectUrl;rb.objectUrl=nextUrl;
+        $('browserFrame').src=nextUrl;$('browserFrame').classList.remove('hidden');
+        $('browserLoading').classList.add('hidden');$('browserRetry').classList.add('hidden');
+        if(previous)URL.revokeObjectURL(previous);
       }
     }
   }catch(e){
+    if(state.remoteBrowser!==rb)return;
     $('browserStatus').textContent=e.message||String(e);
-    $('browserRetry').classList.remove('hidden');
-    log('Verification display failed: '+(e.message||String(e)));
+    $('browserRetry').classList.remove('hidden');log('Verification display: '+e.message);
   }
   if(state.remoteBrowser===rb)state.browserPoll=setTimeout(pollRemoteBrowser,1200);
 }
 async function startRemoteBrowser(row){
-  if(!state.serverVault)return;
-  if(state.remoteBrowser||state.remoteBrowserStarting)return;
+  if(!state.serverVault||state.remoteBrowserStarting)return;
+  if(state.remoteBrowser){$('browserModal').classList.remove('hidden');return}
   state.remoteBrowserStarting=true;
-  $('browserModal').classList.remove('hidden');
-  $('browserRetry').classList.add('hidden');
-  $('browserStatus').textContent='Starting the private PlayLocal browser…';
-  $('browserFrame').removeAttribute('src');
-  $('browserFrame').classList.add('hidden');
-  $('browserLoading')?.classList.remove('hidden');
+  const generation=++browserGeneration;
+  $('browserModal').classList.remove('hidden');document.body.style.overflow='hidden';
+  $('browserRetry').classList.add('hidden');$('browserLoading').classList.remove('hidden');
+  $('browserStatus').textContent=`Opening ${row.slot.courtName}, ${timeLabel(row.start)}, using ${row.account.name}...`;
+  $('browserFrame').removeAttribute('src');$('browserFrame').classList.add('hidden');
   try{
     const ss=await auth(row.account);
     const ticket=await rpc('browser_ticket',{accountId:row.account.id,sessionToken:ss.sessionToken,slot:row.slot});
-    const r=await fetch(BROWSER_SERVICE+'/session/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ticket:ticket.ticket})});
-    const b=await r.json().catch(()=>null);if(!r.ok||!b?.ok)throw Error(b?.message||'Could not start the verification browser.');
-    state.remoteBrowser={id:b.sessionId,key:b.sessionKey,viewport:b.viewport||{width:430,height:760},objectUrl:null};
-    $('browserStatus').textContent=b.statusText||'Remote browser ready.';
+    if(generation!==browserGeneration)return;
+    const r=await fetch(BROWSER_SERVICE+'/session/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ticket:ticket.ticket}),signal:AbortSignal.timeout(60000)});
+    const b=await r.json().catch(()=>null);
+    if(!r.ok||!b?.ok)throw Error(b?.message||'Could not start verification.');
+    const rb={id:b.sessionId,key:b.sessionKey,viewport:b.viewport||{width:430,height:760},objectUrl:null};
+    if(generation!==browserGeneration){try{await browserRequest(`/session/${encodeURIComponent(rb.id)}`,{method:'DELETE'},rb)}catch{}return}
+    state.remoteBrowser=rb;$('browserStatus').textContent=b.statusText||'Loading PlayLocal...';
     pollRemoteBrowser();
   }catch(e){
-    state.remoteBrowser=null;
-    $('browserStatus').textContent='Could not open verification browser: '+e.message;
-    $('browserRetry').classList.remove('hidden');
-    $('browserLoading')?.classList.add('hidden');
-    log('Verification browser failed: '+e.message);
-  }finally{
-    state.remoteBrowserStarting=false;
-  }
+    if(generation!==browserGeneration)return;
+    $('browserStatus').textContent='Could not open verification: '+e.message;
+    $('browserRetry').classList.remove('hidden');$('browserLoading').classList.add('hidden');
+    log('Verification browser: '+e.message);
+  }finally{state.remoteBrowserStarting=false}
 }
-$('browserRetry').onclick=async()=>{const row=state.pendingVerification?.row;await closeRemoteBrowser();if(row)startRemoteBrowser(row)};
-$('browserClose').onclick=closeRemoteBrowser;
+$('browserRetry').onclick=async()=>{const row=state.pendingVerification?.row;await closeRemoteBrowser(true);if(row)startRemoteBrowser(row)};
+$('browserClose').onclick=()=>closeRemoteBrowser();
 $('browserUp').onclick=()=>sendBrowserInput({type:'wheel',deltaY:-560});
 $('browserDown').onclick=()=>sendBrowserInput({type:'wheel',deltaY:560});
 $('browserSendText').onclick=()=>{const v=$('browserText').value;if(v){sendBrowserInput({type:'text',text:v});$('browserText').value=''}};
@@ -283,9 +302,9 @@ $('browserFrame').addEventListener('click',e=>{const rb=state.remoteBrowser;if(!
 $('browserView').addEventListener('wheel',e=>{if(!state.remoteBrowser)return;e.preventDefault();sendBrowserInput({type:'wheel',deltaY:e.deltaY})},{passive:false});
 
 async function verifyRow(row){const ss=await auth(row.account);return rpc('verify_booking',{accountId:row.account.id,sessionToken:ss.sessionToken,slot:row.slot})}
-async function checkPendingBooking(manual=false){const p=state.pendingVerification;if(!p||state.pendingCheckRunning)return false;state.pendingCheckRunning=true;try{for(let i=0;i<4;i++){const v=await verifyRow(p.row);if(v.confirmed){p.row.status='booked';state.pendingVerification=null;$('bookingHelp').innerHTML='';state.bookingCursor++;renderPlan();log(`Confirmed ${p.row.slot.courtName} ${timeLabel(p.row.start)} for ${p.row.account.name}.`);await refreshCurrentBookings(false);state.pendingCheckRunning=false;await continuePlanBooking();return true}if(i<3)await new Promise(r=>setTimeout(r,1500))}if(manual)log('That reservation is not showing in PlayLocal Activity yet.');return false}catch(e){if(manual)log('Reservation check failed: '+e.message);return false}finally{state.pendingCheckRunning=false}}
+async function checkPendingBooking(manual=false){const p=state.pendingVerification;if(!p||state.pendingCheckRunning)return false;state.pendingCheckRunning=true;try{for(let i=0;i<4;i++){const v=await verifyRow(p.row);if(v.confirmed){await closeRemoteBrowser(true);p.row.status='booked';state.pendingVerification=null;$('bookingHelp').innerHTML='';state.bookingCursor++;renderPlan();log(`Confirmed ${p.row.slot.courtName} ${timeLabel(p.row.start)} for ${p.row.account.name}.`);await refreshCurrentBookings(false);state.pendingCheckRunning=false;await continuePlanBooking();return true}if(i<3)await new Promise(r=>setTimeout(r,1500))}if(manual)log('That reservation is not showing in PlayLocal Activity yet.');return false}catch(e){if(manual)log('Reservation check failed: '+e.message);return false}finally{state.pendingCheckRunning=false}}
 async function continuePlanBooking(){if(state.pendingVerification)return;while(state.bookingCursor<state.bookingQueue.length){const row=state.bookingQueue[state.bookingCursor];try{const result=await doBook(row.slot,row.account);row.status='booked';state.bookingCursor++;renderPlan();log(`Booked ${row.slot.courtName} ${timeLabel(row.start)} with ${row.account.name}${result?.reconciled?' and confirmed in Activity':''}.`)}catch(e){if(e.code==='VERIFICATION_REQUIRED'){const url=e.data?.reservationUrl||row.slot.reservationUrl||'';row.status='verification';state.pendingVerification={row,url};renderPlan();log(`${row.slot.courtName} ${timeLabel(row.start)} needs PlayLocal browser verification for ${row.account.name}.`);if(url)verificationHelp(row,url);else $('bookingHelp').textContent='PlayLocal requires verification, but no continuation URL was returned.';return}row.status='failed';row.label=e.message;renderPlan();log(`Stopped at ${row.slot.courtName} ${timeLabel(row.start)}: ${e.message}`);return}}$('bookingHelp').innerHTML='<span class="ok"><b>All planned reservations are confirmed.</b></span>';log('All planned reservations are confirmed.');await refreshCurrentBookings(false)}
-$('bookPlan').onclick=async()=>{setNextStep(4,'Booking in progress. Follow the prompt below if PlayLocal asks for verification.');state.bookingQueue=state.plan.filter(r=>r.status==='planned');state.bookingCursor=0;state.pendingVerification=null;$('bookingHelp').innerHTML='';await continuePlanBooking()};
+$('bookPlan').onclick=async()=>{if(state.pendingVerification){startRemoteBrowser(state.pendingVerification.row);return}if(state.bookingRunning)return;state.bookingRunning=true;try{setNextStep(4,'Booking in progress. Follow the prompt below if PlayLocal asks for verification.');state.bookingQueue=state.plan.filter(r=>r.status==='planned');state.bookingCursor=0;state.pendingVerification=null;$('bookingHelp').innerHTML='';await continuePlanBooking()}finally{state.bookingRunning=false;renderPlan()}};
 window.addEventListener('focus',()=>{if(state.pendingVerification)setTimeout(()=>checkPendingBooking(false),700)});document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state.pendingVerification)setTimeout(()=>checkPendingBooking(false),700)});
 
 async function refreshCurrentBookings(showLog=true){state.remoteBookings=[];for(const a of state.accounts){try{const ss=await auth(a),d=await rpc('history',{accountId:a.id,sessionToken:ss.sessionToken});state.remoteBookings.push({account:a,data:d})}catch(e){state.remoteBookings.push({account:a,error:e.message})}}renderBookings();if(showLog)log(`Loaded current bookings for ${state.accounts.length} account${state.accounts.length===1?'':'s'}.`)}

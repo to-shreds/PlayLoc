@@ -2,6 +2,8 @@ const express = require('express');
 const crypto = require('crypto');
 const puppeteer = require('puppeteer-core');
 const chromium = require('@sparticuz/chromium');
+const { inspectSession, prepareReservationDOM, confirmationLike } = require('./verification-flow');
+const BUILD = 'verification-lifecycle-2';
 
 const PORT = Number(process.env.PORT || 10000);
 const MAIN_API = process.env.COURTFLOW_MAIN_API || 'https://courtflow-playlocal.onrender.com';
@@ -168,122 +170,10 @@ async function navigateReservation(page, payload) {
 }
 
 async function tryPrepareReservation(page, payload) {
-  return page.evaluate(({ courtId, courtName }) => {
-    const controls = [...document.querySelectorAll('select[name*="reservable_id"], input[name*="reservable_id"]')];
-    if (!controls.length) return { ready: false };
-    let exact = controls.find(el => String(el.value || '') === String(courtId));
-    if (!exact && courtName) {
-      const needle = String(courtName).trim().toLowerCase();
-      exact = controls.find(el => {
-        const label = el.id ? document.querySelector(`label[for="${CSS.escape(el.id)}"]`) : null;
-        const text = (label?.innerText || el.closest('label,li,article,div')?.innerText || '').trim().toLowerCase();
-        return text === needle || text.includes(needle);
-      });
-    }
-    if (!exact) return { ready: false, fatal: true, message: 'PlayLocal no longer offers the selected court for this time.' };
-    if (exact.tagName === 'SELECT') {
-      exact.value = exact.value;
-      exact.dispatchEvent(new Event('change', { bubbles: true }));
-    } else if ((exact.type || '').toLowerCase() === 'radio') {
-      exact.click();
-      exact.checked = true;
-      exact.dispatchEvent(new Event('change', { bubbles: true }));
-    } else {
-      exact.click();
-    }
-    for (const box of document.querySelectorAll('input[type="checkbox"]')) {
-      const hay = `${box.name || ''} ${box.id || ''} ${box.getAttribute('aria-label') || ''}`.toLowerCase();
-      if ((box.required || /term|policy|agree|accept/.test(hay)) && !box.checked) box.click();
-    }
-    const form = exact.form || exact.closest('form') || document.querySelector('form');
-    if (form) form.scrollIntoView({ block: 'center' });
-    return { ready: true };
-  }, { courtId: payload.slot.courtId, courtName: payload.slot.courtName || '' });
+  return page.evaluate(prepareReservationDOM, payload.slot);
 }
 
-function confirmationLike(url, body) {
-  const path = (() => { try { return new URL(url).pathname; } catch { return ''; } })();
-  if (/\/reservations\/\d+/.test(path) && !/\/new$/.test(path)) return true;
-  return /reservation (confirmed|created|booked)|successfully reserved|reservation receipt|reservation confirmation/i.test(body || '');
-}
-
-async function inspect(session) {
-  if (!session || session.closed || session.busyInspect) return;
-  session.busyInspect = true;
-  try {
-    const page = session.page;
-    if (!page || page.isClosed()) throw new Error('Remote browser closed unexpectedly.');
-    const info = await page.evaluate(() => {
-      const body = document.body?.innerText || '';
-      const challenge = document.querySelector('input[name="cf-turnstile-response"], textarea[name="cf-turnstile-response"], input[name*="captcha" i], textarea[name*="captcha" i], input[name*="challenge" i], textarea[name*="challenge" i]');
-      const submit = document.querySelector('button[type="submit"], input[type="submit"]');
-      return {
-        body,
-        challengePresent: !!challenge,
-        challengeToken: challenge ? String(challenge.value || '').trim() : '',
-        submitPresent: !!submit,
-        submitDisabled: !!submit?.disabled,
-      };
-    });
-    session.lastActivity = Date.now();
-    if (confirmationLike(page.url(), info.body)) {
-      session.state = 'confirmed';
-      session.statusText = 'PlayLocal reports the reservation was submitted. CourtFlow is confirming it in Activity.';
-      return;
-    }
-    const lower = info.body.toLowerCase();
-    if (/not available|already (reserved|booked)|unable to reserve|reservation failed/.test(lower)) {
-      session.state = 'failed';
-      session.statusText = 'PlayLocal rejected the reservation or the slot is no longer available.';
-      return;
-    }
-    const waiting = /please wait for verification to complete|complete verification|verify you are human|verification required|checking your browser|performing security verification/.test(lower);
-    if (!session.prepared) {
-      const prep = await tryPrepareReservation(page, session.payload);
-      if (prep?.fatal) {
-        session.state = 'failed';
-        session.statusText = prep.message || 'The selected court is no longer available.';
-        return;
-      }
-      if (prep?.ready) {
-        session.prepared = true;
-        session.preparedAt = Date.now();
-        session.state = waiting || info.challengePresent ? 'verification' : 'ready';
-        session.statusText = waiting || info.challengePresent
-          ? 'Complete PlayLocal verification in the window below.'
-          : 'Reservation form is ready. CourtFlow is waiting for PlayLocal verification.';
-        return;
-      }
-      session.state = waiting || info.challengePresent ? 'verification' : 'loading';
-      session.statusText = waiting || info.challengePresent
-        ? 'Complete PlayLocal verification in the window below.'
-        : 'PlayLocal is loading the reservation form. If a verification control appears, complete it below.';
-      return;
-    }
-    const verificationReady = info.challengePresent ? !!info.challengeToken : (!waiting && Date.now() - session.preparedAt > 3500);
-    if (!session.submitting && info.submitPresent && !info.submitDisabled && verificationReady) {
-      session.submitting = true;
-      session.state = 'submitting';
-      session.statusText = 'Verification complete. Submitting the reservation…';
-      await page.evaluate(() => {
-        const submit = document.querySelector('button[type="submit"], input[type="submit"]');
-        if (submit) submit.click();
-      });
-      setTimeout(() => { if (session && !session.closed) session.submitting = false; }, 5000);
-      return;
-    }
-    session.state = waiting || info.challengePresent ? 'verification' : 'ready';
-    session.statusText = waiting || info.challengePresent
-      ? 'Complete PlayLocal verification in the window below.'
-      : 'PlayLocal reservation is ready. CourtFlow is waiting for the final control to become available.';
-  } catch (err) {
-    session.state = 'failed';
-    session.statusText = err.message || String(err);
-    console.error(`Remote session ${session.id} inspect failed:`, err?.stack || err);
-  } finally {
-    session.busyInspect = false;
-  }
-}
+async function inspect(session) { return inspectSession(session); }
 
 function requireSession(req, res, next) {
   const session = sessions.get(req.params.id);
@@ -298,15 +188,17 @@ async function closeSession(session) {
   if (!session || session.closed) return;
   session.closed = true;
   if (session.monitor) clearInterval(session.monitor);
+  try { await session.page?.close(); } catch {}
+  if (session.initPromise) { try { await session.initPromise; } catch {} }
+  session.page = null;
   sessions.delete(session.id);
   if (activeSessionId === session.id) activeSessionId = null;
-  try { await session.page?.close(); } catch {}
-  session.page = null;
 }
 
-app.get('/health', (req, res) => res.json({ ok: true, service: 'courtflow-browser' }));
+app.get('/health', (req, res) => res.json({ ok: true, service: 'courtflow-browser', build: BUILD }));
 
 app.get('/health/deep', async (req, res) => {
+  if (activeSessionId) return res.status(409).json({ ok: false, message: 'A verification is active.' });
   let page = null;
   try {
     const browser = await getBrowser();
@@ -325,33 +217,69 @@ app.get('/health/deep', async (req, res) => {
   }
 });
 
-async function initializeSession(session) {
-  let browser = null;
+async function initializeSession(session, dependencies = {}) {
+  session.initializing = true;
   try {
     session.state = 'starting';
-    session.statusText = 'Starting the private PlayLocal browser…';
-    const material = await fetchSessionMaterial(session.payload.bridgeId, session.payload.accountId);
-    browser = await getBrowser();
+    session.statusText = 'Starting the private PlayLocal browser...';
+    const material = await (dependencies.fetchSessionMaterial || fetchSessionMaterial)(session.payload.bridgeId, session.payload.accountId);
+    if (session.closed) return;
+    const browser = await (dependencies.getBrowser || getBrowser)();
+    if (session.closed) return;
     session.browser = browser;
     const page = await browser.newPage();
+    if (session.closed) { await page.close(); return; }
     session.page = page;
     await page.setViewport(VIEWPORT);
     await page.setJavaScriptEnabled(true);
-    await applySessionMaterial(page, material);
+    if (session.readOnly) {
+      // Diagnostics can observe a real authenticated page but cannot submit it.
+      await page.setRequestInterception(true);
+      page.on('request', request => {
+        if (request.isInterceptResolutionHandled()) return;
+        if (!['GET', 'HEAD'].includes(request.method())) {
+          session.blockedMutations = (session.blockedMutations || 0) + 1;
+          request.abort().catch(() => {});
+        } else request.continue().catch(() => {});
+      });
+    } else {
+      page.on('request', request => {
+        try {
+          const u = new URL(request.url());
+          if (request.method() === 'POST' && ['playlocal.com', 'www.playlocal.com'].includes(u.hostname)
+              && u.pathname === `/facilities/${session.payload.slot.facilityId}/reservations`) {
+            session.submissionAttempted = true;
+          }
+        } catch {}
+      });
+    }
+    await (dependencies.applySessionMaterial || applySessionMaterial)(page, material);
+    if (session.closed) return;
     session.state = 'loading';
-    session.statusText = 'Opening the PlayLocal reservation…';
-    await navigateReservation(page, session.payload);
+    session.statusText = 'Opening the PlayLocal reservation...';
+    await (dependencies.navigateReservation || navigateReservation)(page, session.payload);
+    if (session.closed) return;
+    session.frameReady = true;
+    session.initializing = false;
     await inspect(session);
-    session.monitor = setInterval(() => inspect(session), 650);
-    console.log(`Remote session ${session.id} initialized state=${session.state} url=${page.url()}`);
+    if (!session.closed) session.monitor = setInterval(() => inspect(session), 900);
+    console.log(`Remote session initialized state=${session.state} frameReady=${session.frameReady} readOnly=${!!session.readOnly}`);
   } catch (err) {
-    session.state = 'failed';
-    session.statusText = err.message || String(err);
-    console.error(`Remote session ${session.id} failed:`, err?.stack || err);
+    if (!session.closed) {
+      session.state = 'failed';
+      session.statusText = err.message || String(err);
+      console.error(`Remote session initialization failed: ${session.statusText}`);
+    }
     try { await session.page?.close(); } catch {}
     session.browser = null;
     session.page = null;
-    if (activeSessionId === session.id) activeSessionId = null;
+    session.frameReady = false;
+  } finally {
+    session.initializing = false;
+    if (session.closed) {
+      try { await session.page?.close(); } catch {}
+      session.page = null;
+    }
   }
 }
 
@@ -360,14 +288,14 @@ app.post('/session/start', async (req, res) => {
     const payload = verifyTicket(req.body?.ticket);
     if (!payload.bridgeId) throw new Error('Browser ticket is missing its authenticated session bridge.');
     if (activeSessionId) {
-      const prior = sessions.get(activeSessionId);
-      if (prior) await closeSession(prior);
-      activeSessionId = null;
+      return res.status(409).json({ ok: false, code: 'BROWSER_BUSY', message: 'Another verification is open. Close it before starting another one.' });
     }
     const id = crypto.randomBytes(18).toString('base64url');
     const key = crypto.randomBytes(24).toString('base64url');
     const session = {
       id, key, page: null, browser: null, payload,
+      initializing: true, frameReady: false, submissionAttempted: false,
+      readOnly: req.body?.readOnly === true,
       state: 'starting',
       statusText: 'Starting the private PlayLocal browser…',
       createdAt: Date.now(),
@@ -382,7 +310,7 @@ app.post('/session/start', async (req, res) => {
     sessions.set(id, session);
     activeSessionId = id;
     res.json({ ok: true, sessionId: id, sessionKey: key, state: session.state, statusText: session.statusText, viewport: VIEWPORT });
-    initializeSession(session);
+    session.initPromise = initializeSession(session);
   } catch (err) {
     console.error('start session failed:', err?.stack || err);
     res.status(err.status || 500).json({ ok: false, message: err.message || String(err) });
@@ -392,14 +320,14 @@ app.post('/session/start', async (req, res) => {
 app.get('/session/:id/status', requireSession, async (req, res) => {
   const s = req.remoteSession;
   await inspect(s);
-  res.json({ ok: true, state: s.state, statusText: s.statusText, viewport: VIEWPORT, frameReady: !!s.page && !s.page.isClosed(), ageSeconds: Math.round((Date.now() - s.createdAt) / 1000) });
+  res.json({ ok: true, state: s.state, statusText: s.statusText, viewport: VIEWPORT, build: BUILD, readOnly: !!s.readOnly, selectedCourtId: s.selectedCourtId || '', challengePresent: !!s.challengePresent, submissionAttempted: !!s.submissionAttempted, frameReady: !!s.frameReady && !s.initializing && !!s.page && !s.page.isClosed() && s.state !== 'failed', ageSeconds: Math.round((Date.now() - s.createdAt) / 1000) });
 });
 
 app.get('/session/:id/frame', requireSession, async (req, res) => {
   try {
-    if (!req.remoteSession.page || req.remoteSession.page.isClosed()) return res.status(425).json({ ok: false, message: 'Remote browser is still starting.' });
+    if (!req.remoteSession.frameReady || req.remoteSession.initializing || !req.remoteSession.page || req.remoteSession.page.isClosed()) return res.status(425).json({ ok: false, message: 'Remote browser is still starting.' });
     const image = await req.remoteSession.page.screenshot({ type: 'jpeg', quality: 68, fullPage: false, captureBeyondViewport: false });
-    res.type('jpeg').send(image);
+    res.type('jpeg').send(Buffer.from(image));
   } catch (err) {
     res.status(500).json({ ok: false, message: err.message || String(err) });
   }
@@ -407,6 +335,7 @@ app.get('/session/:id/frame', requireSession, async (req, res) => {
 
 app.post('/session/:id/input', requireSession, async (req, res) => {
   const s = req.remoteSession;
+  if (s.readOnly || s.initializing || !s.frameReady || !s.page || s.page.isClosed() || s.state === 'failed') return res.status(409).json({ ok: false, message: s.readOnly ? 'Input is disabled during a read-only display test.' : 'Wait for the verification page to load.' });
   try {
     const body = req.body || {};
     if (body.type === 'click') {
@@ -471,7 +400,22 @@ async function warmBrowserRuntime() {
   console.error('CourtFlow runtime Chromium warmup failed after 3 attempts.');
 }
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`CourtFlow browser service listening on ${PORT}`);
-  warmBrowserRuntime();
-});
+if (require.main === module) {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`CourtFlow browser service listening on ${PORT} build=${BUILD}`);
+    warmBrowserRuntime().then(async () => {
+      if (process.env.COURTFLOW_RUN_READONLY_PROBE === '1') {
+        await require('./readonly-probe').run({ port: PORT, mainAPI: MAIN_API });
+      }
+    });
+  });
+}
+
+async function shutdownBrowser() {
+  for (const session of sessions.values()) await closeSession(session);
+  const browser = await sharedBrowserPromise;
+  sharedBrowserPromise = null;
+  try { await browser?.close(); } catch {}
+}
+module.exports = { app, sessions, inspect, initializeSession, closeSession, getBrowser, shutdownBrowser, confirmationLike, tryPrepareReservation, VIEWPORT };
+

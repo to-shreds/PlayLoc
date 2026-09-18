@@ -137,6 +137,7 @@ test('full verification lifecycle regression suite', { timeout: 180000 }, async 
     ui.on('request', async req => {
       try {
         const u = new URL(req.url());
+        if (req.method() === 'OPTIONS') return req.respond({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET,POST,DELETE,OPTIONS', 'access-control-allow-headers': 'content-type,x-courtflow-session' } });
         if (u.hostname === 'to-shreds.github.io') return req.respond({ status: 200, contentType: 'text/html', body: html });
         if (u.hostname === 'courtflow-playlocal.onrender.com') {
           const b = JSON.parse(req.postData() || '{}'); let data;
