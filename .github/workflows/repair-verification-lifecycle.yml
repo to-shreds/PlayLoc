@@ -1,0 +1,62 @@
+name: Repair verification lifecycle
+on:
+  push:
+    paths:
+      - '.github/workflows/repair-verification-lifecycle.yml'
+      - 'scripts/repair-verification-lifecycle.py'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: verification-lifecycle-repair
+  cancel-in-progress: false
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Apply checked source repair
+        run: |
+          python scripts/repair-verification-lifecycle.py
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          h=Path('index.html').read_text()
+          Path('/tmp/courtflow-ui.js').write_text(re.search(r'<script>(.*)</script>',h,re.S).group(1))
+          p=Path('browser_service/verification.test.js')
+          s=p.read_text()
+          anchor="        const u = new URL(req.url());"
+          assert s.count(anchor)==1
+          s=s.replace(anchor, anchor+"\n        if (req.method() === 'OPTIONS') return req.respond({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET,POST,DELETE,OPTIONS', 'access-control-allow-headers': 'content-type,x-courtflow-session' } });",1)
+          p.write_text(s)
+          PY
+          node --check browser_service/server.js
+          node --check browser_service/verification-flow.js
+          node --check browser_service/readonly-probe.js
+          node --check /tmp/courtflow-ui.js
+      - name: Install pinned browser dependencies
+        run: npm install --prefix browser_service --ignore-scripts
+      - name: Run actual browser, HTTP and mobile UI regression tests
+        run: |
+          set -o pipefail
+          node --test browser_service/verification.test.js 2>&1 | tee /tmp/verification-tests.txt
+      - name: Save fixture-only verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-lifecycle-fixture
+          path: |
+            /tmp/verification-tests.txt
+            browser_service/test-output/
+          retention-days: 7
+      - name: Publish tested source
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add browser_service/server.js browser_service/verification.test.js index.html
+          git commit -m 'Fix startup polling and false booking confirmation; pass mobile image tests'
+          git push
