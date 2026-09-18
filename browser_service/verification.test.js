@@ -52,6 +52,8 @@ test('full verification lifecycle regression suite', { timeout: 180000 }, async 
     }
     assert.equal((await request(s, '/frame')).status, 425);
     await s.initPromise;
+    assert.equal(s.state, 'loading'); assert.equal(s.frameReady, false); assert.equal(s.selectedCourtId, '54');
+    await delay(1000); await runtime.inspect(s);
     assert.equal(s.state, 'verification'); assert.equal(s.frameReady, true); assert.equal(s.selectedCourtId, '54');
     await runtime.closeSession(s);
   });
@@ -107,19 +109,36 @@ test('full verification lifecycle regression suite', { timeout: 180000 }, async 
   });
 
   await t.test('selected court is prepared but challenge stays untouched', async () => {
-    const s = makeSession(); await initialize(s); clearInterval(s.monitor);
+    const s = makeSession(); await initialize(s); clearInterval(s.monitor); await delay(1000); await runtime.inspect(s);
     const values = await s.page.evaluate(() => ({ court: new FormData(document.getElementById('reservation')).get('reservation[reservable_id]'), token: document.getElementById('response').value, posts: window.bookingPosts || 0 }));
     assert.deepEqual(values, { court: '54', token: '', posts: 0 }); assert.equal(s.state, 'verification');
     await runtime.closeSession(s);
   });
   await t.test('only the exact reservation form submits once, never the search form', async () => {
-    const s = makeSession(); await initialize(s); clearInterval(s.monitor);
+    const s = makeSession(); await initialize(s); clearInterval(s.monitor); await delay(1000); await runtime.inspect(s);
     await s.page.click('#fixture-step');
     await runtime.inspect(s); await runtime.inspect(s); await runtime.inspect(s);
     const counts = await s.page.evaluate(() => ({ booking: window.bookingPosts || 0, search: window.searchPosts || 0 }));
     assert.deepEqual(counts, { booking: 1, search: 0 }); assert.equal(s.submissionAttempted, true);
     await runtime.closeSession(s);
   });
+  await t.test('court drift hides the frame and restores the requested ID before display', async () => {
+    const s = makeSession(); await initialize(s); clearInterval(s.monitor); await delay(1000); await runtime.inspect(s);
+    assert.equal(s.frameReady, true); assert.equal(s.selectedCourtId, '54');
+    await s.page.evaluate(() => {
+      const court1 = document.querySelector('input[name="reservation[reservable_id]"][value="53"]');
+      court1.click();
+    });
+    await runtime.inspect(s);
+    assert.equal(s.frameReady, false); assert.equal(s.prepared, false); assert.equal(s.selectedCourtId, '');
+    await runtime.inspect(s);
+    assert.equal(s.selectedCourtId, '54'); assert.equal(s.frameReady, false);
+    await delay(1000); await runtime.inspect(s);
+    assert.equal(s.selectedCourtId, '54'); assert.equal(s.frameReady, true);
+    assert.equal(await s.page.$eval('input[name="reservation[reservable_id]"][value="54"]', el => el.checked), true);
+    await runtime.closeSession(s);
+  });
+
   await t.test('select control chooses a nondefault exact ID', async () => {
     const browser = await runtime.getBrowser(), page = await browser.newPage();
     await page.setContent('<form><select name="reservation[reservable_id]"><option value="53">Court 1</option><option value="54">Court 2</option></select></form>');
@@ -133,7 +152,7 @@ test('full verification lifecycle regression suite', { timeout: 180000 }, async 
     assert.equal(prep.fatal, true); await page.close();
   });
   await t.test('frame HTTP response is an actual decodable 430 by 760 JPEG', async () => {
-    const s = makeSession(); await initialize(s); clearInterval(s.monitor);
+    const s = makeSession(); await initialize(s); clearInterval(s.monitor); await delay(1000); await runtime.inspect(s);
     const response = await request(s, '/frame');
     assert.equal(response.status, 200); assert.match(response.headers.get('content-type'), /^image\/jpeg/);
     const image = Buffer.from(await response.arrayBuffer()); assert.equal(image[0], 255); assert.equal(image[1], 216);
