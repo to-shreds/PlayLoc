@@ -78,6 +78,34 @@ test('full verification lifecycle regression suite', { timeout: 180000 }, async 
     assert.equal(flow.confirmationLike('https://www.playlocal.com/reservations/123', '', true), true);
     assert.equal(flow.confirmationLike('https://www.playlocal.com/reservations/123/edit', '', true), false);
   });
+  await t.test('stale PlayLocal pending reservation chooses New Reservation', async () => {
+    const browser = await runtime.getBrowser(), page = await browser.newPage();
+    await page.setContent(`<div role="dialog"><h2>Another reservation is in progress</h2>
+      <p>You have already initiated a reservation for West Roxbury High School for Friday, September 25, 09:00 AM.</p>
+      <button id="continue" onclick="window.choice='continue'">CONTINUE RESERVATION</button>
+      <button id="new" onclick="window.choice='new'">NEW RESERVATION</button></div>`);
+    const result = await page.evaluate(flow.handlePendingReservationDOM, slot);
+    assert.equal(result.present, true);
+    assert.equal(result.matchesRequestedSlot, false);
+    assert.equal(result.action, 'new');
+    assert.equal(await page.evaluate(() => window.choice), 'new');
+    await page.close();
+  });
+
+  await t.test('matching PlayLocal pending reservation chooses Continue Reservation', async () => {
+    const browser = await runtime.getBrowser(), page = await browser.newPage();
+    await page.setContent(`<div role="dialog"><h2>Another reservation is in progress</h2>
+      <p>You have already initiated a reservation for West Roxbury High School for Friday, September 25, 07:00 AM.</p>
+      <button id="continue" onclick="window.choice='continue'">CONTINUE RESERVATION</button>
+      <button id="new" onclick="window.choice='new'">NEW RESERVATION</button></div>`);
+    const result = await page.evaluate(flow.handlePendingReservationDOM, slot);
+    assert.equal(result.present, true);
+    assert.equal(result.matchesRequestedSlot, true);
+    assert.equal(result.action, 'continue');
+    assert.equal(await page.evaluate(() => window.choice), 'continue');
+    await page.close();
+  });
+
   await t.test('selected court is prepared but challenge stays untouched', async () => {
     const s = makeSession(); await initialize(s); clearInterval(s.monitor);
     const values = await s.page.evaluate(() => ({ court: new FormData(document.getElementById('reservation')).get('reservation[reservable_id]'), token: document.getElementById('response').value, posts: window.bookingPosts || 0 }));
