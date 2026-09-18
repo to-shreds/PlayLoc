@@ -11,6 +11,20 @@ const VIEWPORT = { width: 430, height: 760, deviceScaleFactor: 1, isMobile: true
 const SESSION_TTL_MS = 12 * 60 * 1000;
 const sessions = new Map();
 const usedNonces = new Map();
+let chromiumPathPromise = null;
+let sharedBrowserPromise = null;
+
+function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+async function chromiumPath() {
+  if (!chromiumPathPromise) {
+    chromiumPathPromise = chromium.executablePath().catch(err => {
+      chromiumPathPromise = null;
+      throw err;
+    });
+  }
+  return chromiumPathPromise;
+}
 
 const app = express();
 app.disable('x-powered-by');
@@ -58,13 +72,56 @@ function verifyTicket(ticket) {
   return payload;
 }
 
-async function launchBrowser() {
-  return puppeteer.launch({
-    args: [...chromium.args, '--disable-dev-shm-usage', '--no-first-run', '--no-default-browser-check'],
-    defaultViewport: VIEWPORT,
-    executablePath: await chromium.executablePath(),
-    headless: 'shell',
+async function getBrowser() {
+  if (sharedBrowserPromise) return sharedBrowserPromise;
+  sharedBrowserPromise = (async () => {
+    const executablePath = await chromiumPath();
+    let lastError = null;
+    for (let attempt = 1; attempt <= 4; attempt++) {
+      try {
+        const browser = await puppeteer.launch({
+          args: [
+            ...chromium.args,
+            '--disable-dev-shm-usage',
+            '--no-first-run',
+            '--no-default-browser-check',
+            '--renderer-process-limit=1',
+            '--disable-gpu',
+            '--disable-software-rasterizer',
+            '--mute-audio',
+          ],
+          defaultViewport: VIEWPORT,
+          executablePath,
+          headless: 'shell',
+        });
+        browser.on('disconnected', () => {
+          console.error('Shared Chromium disconnected.');
+          sharedBrowserPromise = null;
+          for (const session of sessions.values()) {
+            if (!session.closed && session.browser === browser && session.state !== 'confirmed') {
+              session.state = 'failed';
+              session.statusText = 'The verification browser restarted unexpectedly. Tap Retry.';
+              session.page = null;
+              session.context = null;
+            }
+          }
+        });
+        console.log('Shared Chromium started.');
+        return browser;
+      } catch (err) {
+        lastError = err;
+        const busy = /ETXTBSY|text file busy/i.test(String(err?.message || err));
+        if (!busy || attempt === 4) throw err;
+        console.warn(`Chromium executable busy; retrying launch attempt ${attempt + 1}.`);
+        await sleep(600 * attempt);
+      }
+    }
+    throw lastError || new Error('Could not start Chromium.');
+  })().catch(err => {
+    sharedBrowserPromise = null;
+    throw err;
   });
+  return sharedBrowserPromise;
 }
 
 async function fetchSessionMaterial(bridgeId, accountId) {
@@ -219,6 +276,7 @@ async function inspect(session) {
   } catch (err) {
     session.state = 'failed';
     session.statusText = err.message || String(err);
+    console.error(`Remote session ${session.id} inspect failed:`, err?.stack || err);
   } finally {
     session.busyInspect = false;
   }
@@ -238,7 +296,9 @@ async function closeSession(session) {
   session.closed = true;
   if (session.monitor) clearInterval(session.monitor);
   sessions.delete(session.id);
-  try { await session.browser?.close(); } catch {}
+  try { await session.context?.close(); } catch {}
+  session.context = null;
+  session.page = null;
 }
 
 app.get('/health', (req, res) => res.json({ ok: true, service: 'courtflow-browser' }));
@@ -249,9 +309,11 @@ async function initializeSession(session) {
     session.state = 'starting';
     session.statusText = 'Starting the private PlayLocal browser…';
     const material = await fetchSessionMaterial(session.payload.bridgeId, session.payload.accountId);
-    browser = await launchBrowser();
+    browser = await getBrowser();
     session.browser = browser;
-    const page = await browser.newPage();
+    const context = await browser.createBrowserContext();
+    session.context = context;
+    const page = await context.newPage();
     session.page = page;
     await page.setViewport(VIEWPORT);
     await page.setJavaScriptEnabled(true);
@@ -266,7 +328,8 @@ async function initializeSession(session) {
     session.state = 'failed';
     session.statusText = err.message || String(err);
     console.error(`Remote session ${session.id} failed:`, err?.stack || err);
-    try { await browser?.close(); } catch {}
+    try { await session.context?.close(); } catch {}
+    session.context = null;
     session.browser = null;
     session.page = null;
   }
@@ -279,7 +342,7 @@ app.post('/session/start', async (req, res) => {
     const id = crypto.randomBytes(18).toString('base64url');
     const key = crypto.randomBytes(24).toString('base64url');
     const session = {
-      id, key, page: null, browser: null, payload,
+      id, key, page: null, context: null, browser: null, payload,
       state: 'starting',
       statusText: 'Starting the private PlayLocal browser…',
       createdAt: Date.now(),
@@ -309,8 +372,8 @@ app.get('/session/:id/status', requireSession, async (req, res) => {
 app.get('/session/:id/frame', requireSession, async (req, res) => {
   try {
     if (!req.remoteSession.page || req.remoteSession.page.isClosed()) return res.status(425).json({ ok: false, message: 'Remote browser is still starting.' });
-    const png = await req.remoteSession.page.screenshot({ type: 'png', fullPage: false, captureBeyondViewport: false });
-    res.type('png').send(png);
+    const image = await req.remoteSession.page.screenshot({ type: 'jpeg', quality: 68, fullPage: false, captureBeyondViewport: false });
+    res.type('jpeg').send(image);
   } catch (err) {
     res.status(500).json({ ok: false, message: err.message || String(err) });
   }
