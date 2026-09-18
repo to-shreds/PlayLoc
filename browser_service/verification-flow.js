@@ -146,6 +146,8 @@ async function inspectSession(session) {
         session.selectedCourtId = '';
         session.challengePresent = false;
         session.pendingDraftActionAt = Date.now();
+        session.frameReady = false;
+        session.courtStableSince = 0;
         console.log(`Resolved PlayLocal pending reservation modal action=${modal.action} match=${modal.matchesRequestedSlot} facility=${modal.facilityMatch} date=${modal.dateMatch} time=${modal.timeMatch}`);
       }
       session.state = 'loading';
@@ -156,6 +158,7 @@ async function inspectSession(session) {
     }
 
     if (!session.prepared) {
+      session.frameReady = false;
       const prep = await page.evaluate(prepareReservationDOM, session.payload.slot);
       if (session.closed) return;
       if (prep.fatal) throw new Error(prep.message);
@@ -163,6 +166,7 @@ async function inspectSession(session) {
         session.prepared = true;
         session.preparedAt = Date.now();
         session.selectedCourtId = prep.selectedCourtId;
+        session.courtStableSince = Date.now();
       }
     }
     const info = await page.evaluate(reservationInfoDOM);
@@ -170,13 +174,30 @@ async function inspectSession(session) {
     session.challengePresent = info.challengePresent;
     const waiting = /please wait for verification to complete|complete verification|verify you are human|verification required|checking your browser|performing security verification/i.test(info.text);
     if (!session.prepared || !info.formPresent) {
+      session.frameReady = !!info.challengePresent;
       session.state = 'verification';
-      session.statusText = 'Complete any PlayLocal security check shown below. The reservation will load afterward.';
+      session.statusText = info.challengePresent
+        ? 'Complete the PlayLocal security check shown below. CourtFlow will lock the exact court afterward.'
+        : 'Loading the exact requested court...';
       return;
     }
     if (info.selectedCourtId !== String(session.payload.slot.courtId)) {
-      throw new Error('The court changed in PlayLocal. Nothing further was submitted. Retry to restore your selected court.');
+      session.prepared = false;
+      session.selectedCourtId = '';
+      session.frameReady = false;
+      session.courtStableSince = 0;
+      session.state = 'loading';
+      session.statusText = `PlayLocal changed the court. Restoring ${session.payload.slot.courtName} before continuing...`;
+      return;
     }
+    if (!session.courtStableSince) session.courtStableSince = Date.now();
+    if (Date.now() - session.courtStableSince < 900) {
+      session.frameReady = false;
+      session.state = 'loading';
+      session.statusText = `Locking ${session.payload.slot.courtName} before showing the verification page...`;
+      return;
+    }
+    session.frameReady = true;
     if (session.readOnly) {
       session.state = 'verification';
       session.statusText = 'Read-only display test. Booking and browser input are disabled.';
