@@ -1,42 +1,41 @@
 # PlayLoc / CourtFlow
 
-CourtFlow is a multi-account PlayLocal court-search and booking concept with a GitHub Pages frontend and a server-side connector.
+CourtFlow is a browser-first PlayLocal court calendar and booking concept. This repository controls the implementation. `to-shreds/ProjectStatus/projects/playlocal-courtflow/STATUS.md` records verified readiness and remaining work.
 
-## Frontend
-
-The hosted app is deployed at:
+## Hosted app
 
 `https://to-shreds.github.io/PlayLoc/`
 
-The live adapter URL is hard-wired into `index.html`:
+The HTML app uses the hard-wired Render adapter at `https://courtflow-playlocal.onrender.com/adapter`. West Roxbury is the default search location. Users choose a venue and date, select exact court/hour cells, review account assignments, and book.
 
-`https://courtflow-playlocal.onrender.com/adapter`
+In the primary hosted configuration, a site password unlocks three server-managed account nicknames. PlayLocal usernames and passwords stay in Render environment variables. GitHub, HTML, localStorage, and client request payloads do not contain the server-held credentials. The original browser-saved account mode remains available only when the server vault is not configured.
 
-Saved PlayLocal accounts persist in the browser on the device where they were entered. The frontend can search availability, plan account handoffs, make supported bookings, and load each saved account's current PlayLocal reservations through the Bookings tab.
+## Backend and verification
 
-## Backend
+`playlocal_server.py` implements authentication, availability, free booking, and reservation history. Each PlayLocal account has separate HTTP cookie/session state. History and final confirmation use PlayLocal's authenticated Activity route at `/user/reservations`.
 
-`playlocal_server.py` exposes CourtFlow's `/adapter` endpoint and keeps separate cookie/session state for each configured PlayLocal account. It implements authentication, availability, free booking, and reservation history. Reservation history is read from PlayLocal's authenticated Activity route at `/user/reservations`.
+`browser_service/server.js` supplies the interactive PlayLocal verification display at `https://courtflow-browser-playlocal.onrender.com`. A signed, one-use ticket authorizes transfer of an already-authenticated session directly between the two Render services. The temporary PlayLocal page is rendered as authenticated JPEG responses. The user's clicks complete the real verification; CourtFlow does not synthesize verification tokens.
 
-The connector is deployed on Render at:
+The current Chromium configuration uses one active verification at a time. A second request is rejected while another verification is open, rather than silently closing somebody else's page. Bookings are processed sequentially. The image is displayed only after it decodes successfully, startup status polls remain nonterminal, and the pre-booking form's "reservation receipt" text is not treated as success. Only the exact selected court's reservation form can be submitted. An uncertain submission is not automatically repeated; Activity reconciliation determines whether it booked.
 
-`https://courtflow-playlocal.onrender.com`
+Paid reservations remain unsupported. The optional Android experiment is not required by the web workflow.
 
-## PlayLocal transport and search parsing
+## Regression tests
 
-PlayLocal's Cloudflare layer rejects ordinary server-side HTTP clients with HTTP 403. The connector uses a Chrome-compatible TLS/browser fingerprint through `curl_cffi`, while preserving separate cookies and authenticated sessions for each PlayLocal account.
+```bash
+npm install --prefix browser_service --ignore-scripts
+node --test browser_service/verification.test.js
+```
 
-Search parsing now follows PlayLocal's current result markup directly: each facility card is identified by `data-role="facility"`, with the real facility heading, address, reservable-court count, and reservation-selector times read from the corresponding structured elements. This replaced the earlier ancestor-based parser that could return fallback names such as `Facility 30` and zero time slots.
+The suite exercises actual Chromium pages, authenticated HTTP frame responses, delayed startup, cancellation, failed initialization, false receipt text, exact court selection, single submission, read-only guards, and the mobile HTML interface. All PlayLocal-looking content in this suite is a local fixture. It does not use live accounts or create reservations. The permanent GitHub Actions verification workflow runs it after browser-service or frontend changes.
 
-The deployed live-search smoke test posts an availability query through the public Render adapter and requires nonzero facilities, nonzero slots, at least one available slot, and real facility names. The current benchmark returned 4 named Boston tennis facilities and 28 court/time rows for a 4–8 PM search on September 17, 2026.
+`browser_service/readonly-probe.js` is an opt-in Render diagnostic for the real authenticated display flow. It uses a temporary site credential configured only in Render, blocks all non-GET/HEAD browser requests and all interactive input, decodes five HTTP-delivered frames, and checks that Activity history is unchanged. It never calls the booking action. Disable its environment flag and clear the temporary diagnostic credential after testing. A successful display probe is not evidence that a human CAPTCHA or real reservation creation has been completed.
 
-Current-bookings retrieval has also been exercised successfully from the hosted app against saved PlayLocal accounts. Actual reservation creation remains a separate live-account test. Paid reservations remain blocked pending an explicit payment flow.
-
-## Local test
+## Local adapter
 
 ```bash
 pip install -r requirements.txt
 python playlocal_server.py
 ```
 
-Then use `http://127.0.0.1:8765/adapter` as the adapter URL from a locally served frontend.
+The local adapter is `http://127.0.0.1:8765/adapter`. No production credentials are needed for the browser regression tests.
