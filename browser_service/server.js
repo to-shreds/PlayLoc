@@ -448,4 +448,30 @@ process.on('SIGTERM', async () => {
   process.exit(0);
 });
 
-app.listen(PORT, '0.0.0.0', () => console.log(`CourtFlow browser service listening on ${PORT}`));
+async function warmBrowserRuntime() {
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    let page = null;
+    try {
+      const browser = await getBrowser();
+      page = await browser.newPage();
+      await page.setViewport(VIEWPORT);
+      await page.goto('data:text/html,<title>CourtFlow Runtime Warmup</title><h1>ok</h1>', { waitUntil: 'domcontentloaded', timeout: 15000 });
+      const image = await page.screenshot({ type: 'jpeg', quality: 68, fullPage: false, captureBeyondViewport: false });
+      if (!image || image.length < 100) throw new Error('Runtime warmup frame was invalid.');
+      await page.close();
+      console.log(`CourtFlow runtime Chromium warmup passed on attempt ${attempt}.`);
+      return;
+    } catch (err) {
+      try { await page?.close(); } catch {}
+      console.error(`CourtFlow runtime Chromium warmup attempt ${attempt} failed:`, err?.stack || err);
+      sharedBrowserPromise = null;
+      if (attempt < 3) await sleep(900 * attempt);
+    }
+  }
+  console.error('CourtFlow runtime Chromium warmup failed after 3 attempts.');
+}
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`CourtFlow browser service listening on ${PORT}`);
+  warmBrowserRuntime();
+});
