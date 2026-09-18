@@ -35,6 +35,55 @@ function prepareReservationDOM({ courtId }) {
   return { ready: true, selectedCourtId: id };
 }
 
+function handlePendingReservationDOM(slot) {
+  const controls = [...document.querySelectorAll('button, a, input[type="button"], input[type="submit"]')];
+  const label = el => String(el.innerText || el.value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const continueButton = controls.find(el => label(el) === 'continue reservation');
+  const newButton = controls.find(el => label(el) === 'new reservation');
+  if (!continueButton || !newButton) return { present: false };
+
+  const container = newButton.closest('[role="dialog"], .modal, .modal-dialog, .modal-content, .dialog, .popup') || continueButton.parentElement?.parentElement || document.body;
+  const text = String(container?.innerText || document.body?.innerText || '').replace(/\s+/g, ' ').trim();
+  if (!/another reservation is in progress/i.test(text)) return { present: false };
+
+  const normalize = value => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const facilityMatch = !slot.facilityName || normalize(text).includes(normalize(slot.facilityName));
+
+  const [y, m, d] = String(slot.date || '').split('-').map(Number);
+  let dateMatch = false;
+  if (y && m && d) {
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    const monthDay = new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' }).format(dt);
+    const weekdayMonthDay = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' }).format(dt);
+    const hay = normalize(text);
+    dateMatch = hay.includes(normalize(monthDay)) || hay.includes(normalize(weekdayMonthDay));
+  }
+
+  const timeValues = [];
+  for (const match of text.matchAll(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/ig)) {
+    let hour = Number(match[1]) % 12;
+    const minute = Number(match[2] || 0);
+    if (match[3].toLowerCase() === 'pm') hour += 12;
+    timeValues.push(hour * 60 + minute);
+  }
+  const timeMatch = timeValues.includes(Number(slot.start));
+
+  const matchesRequestedSlot = facilityMatch && dateMatch && timeMatch;
+  const target = matchesRequestedSlot ? continueButton : newButton;
+  const disabled = target.disabled || target.getAttribute('aria-disabled') === 'true';
+  if (!disabled) target.click();
+
+  return {
+    present: true,
+    clicked: !disabled,
+    action: matchesRequestedSlot ? 'continue' : 'new',
+    matchesRequestedSlot,
+    facilityMatch,
+    dateMatch,
+    timeMatch,
+  };
+}
+
 function reservationInfoDOM() {
   const form = document.querySelector('form[data-courtflow-reservation="true"]');
   const root = form || document;
@@ -86,6 +135,26 @@ async function inspectSession(session) {
       return;
     }
     if (new URL(page.url()).pathname === '/sign_in') throw new Error('The PlayLocal login expired. Retry verification to sign in again.');
+
+    // PlayLocal can retain an unfinished reservation in the authenticated account.
+    // Resolve that modal before asking the user to verify the currently requested slot.
+    const modal = await page.evaluate(handlePendingReservationDOM, session.payload.slot);
+    if (session.closed) return;
+    if (modal.present) {
+      if (modal.clicked) {
+        session.prepared = false;
+        session.selectedCourtId = '';
+        session.challengePresent = false;
+        session.pendingDraftActionAt = Date.now();
+        console.log(`Resolved PlayLocal pending reservation modal action=${modal.action} match=${modal.matchesRequestedSlot} facility=${modal.facilityMatch} date=${modal.dateMatch} time=${modal.timeMatch}`);
+      }
+      session.state = 'loading';
+      session.statusText = modal.action === 'continue'
+        ? 'Continuing the matching PlayLocal reservation and restoring your exact court...'
+        : 'Clearing an older PlayLocal reservation draft and reopening your selected slot...';
+      return;
+    }
+
     if (!session.prepared) {
       const prep = await page.evaluate(prepareReservationDOM, session.payload.slot);
       if (session.closed) return;
@@ -146,4 +215,4 @@ async function inspectSession(session) {
   } finally { session.busyInspect = false; }
 }
 
-module.exports = { prepareReservationDOM, reservationInfoDOM, submitReservationDOM, confirmationLike, inspectSession };
+module.exports = { prepareReservationDOM, handlePendingReservationDOM, reservationInfoDOM, submitReservationDOM, confirmationLike, inspectSession };
