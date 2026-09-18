@@ -13,6 +13,7 @@ const sessions = new Map();
 const usedNonces = new Map();
 let chromiumPathPromise = null;
 let sharedBrowserPromise = null;
+let activeSessionId = null;
 
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
@@ -132,7 +133,17 @@ async function fetchSessionMaterial(bridgeId, accountId) {
   return data;
 }
 
+async function clearBrowserCookies(page) {
+  const client = await page.createCDPSession();
+  try {
+    await client.send('Network.clearBrowserCookies');
+  } finally {
+    try { await client.detach(); } catch {}
+  }
+}
+
 async function applySessionMaterial(page, material) {
+  await clearBrowserCookies(page);
   await page.setUserAgent(material.userAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36');
   await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
   const cookies = (material.cookies || []).map(c => ({
@@ -288,30 +299,29 @@ async function closeSession(session) {
   session.closed = true;
   if (session.monitor) clearInterval(session.monitor);
   sessions.delete(session.id);
-  try { await session.context?.close(); } catch {}
-  session.context = null;
+  if (activeSessionId === session.id) activeSessionId = null;
+  try { await session.page?.close(); } catch {}
   session.page = null;
 }
 
 app.get('/health', (req, res) => res.json({ ok: true, service: 'courtflow-browser' }));
 
 app.get('/health/deep', async (req, res) => {
-  let context = null;
+  let page = null;
   try {
     const browser = await getBrowser();
-    context = await browser.createBrowserContext();
-    const page = await context.newPage();
+    page = await browser.newPage();
     await page.setViewport(VIEWPORT);
     await page.goto('data:text/html,<title>CourtFlow Deep Health</title><h1>ok</h1>', { waitUntil: 'domcontentloaded', timeout: 15000 });
     const title = await page.title();
     const image = await page.screenshot({ type: 'jpeg', quality: 68, fullPage: false, captureBeyondViewport: false });
     if (title !== 'CourtFlow Deep Health' || !image || image.length < 100) throw new Error('Chromium deep health check returned an invalid result.');
-    res.json({ ok: true, service: 'courtflow-browser', chromium: 'ready', isolatedContext: true, frameBytes: image.length });
+    res.json({ ok: true, service: 'courtflow-browser', chromium: 'ready', singleActivePage: true, frameBytes: image.length });
   } catch (err) {
     console.error('Deep health failed:', err?.stack || err);
     res.status(500).json({ ok: false, service: 'courtflow-browser', message: err.message || String(err) });
   } finally {
-    try { await context?.close(); } catch {}
+    try { await page?.close(); } catch {}
   }
 });
 
@@ -323,9 +333,7 @@ async function initializeSession(session) {
     const material = await fetchSessionMaterial(session.payload.bridgeId, session.payload.accountId);
     browser = await getBrowser();
     session.browser = browser;
-    const context = await browser.createBrowserContext();
-    session.context = context;
-    const page = await context.newPage();
+    const page = await browser.newPage();
     session.page = page;
     await page.setViewport(VIEWPORT);
     await page.setJavaScriptEnabled(true);
@@ -340,10 +348,10 @@ async function initializeSession(session) {
     session.state = 'failed';
     session.statusText = err.message || String(err);
     console.error(`Remote session ${session.id} failed:`, err?.stack || err);
-    try { await session.context?.close(); } catch {}
-    session.context = null;
+    try { await session.page?.close(); } catch {}
     session.browser = null;
     session.page = null;
+    if (activeSessionId === session.id) activeSessionId = null;
   }
 }
 
@@ -351,10 +359,15 @@ app.post('/session/start', async (req, res) => {
   try {
     const payload = verifyTicket(req.body?.ticket);
     if (!payload.bridgeId) throw new Error('Browser ticket is missing its authenticated session bridge.');
+    if (activeSessionId) {
+      const prior = sessions.get(activeSessionId);
+      if (prior) await closeSession(prior);
+      activeSessionId = null;
+    }
     const id = crypto.randomBytes(18).toString('base64url');
     const key = crypto.randomBytes(24).toString('base64url');
     const session = {
-      id, key, page: null, context: null, browser: null, payload,
+      id, key, page: null, browser: null, payload,
       state: 'starting',
       statusText: 'Starting the private PlayLocal browser…',
       createdAt: Date.now(),
@@ -367,6 +380,7 @@ app.post('/session/start', async (req, res) => {
       monitor: null,
     };
     sessions.set(id, session);
+    activeSessionId = id;
     res.json({ ok: true, sessionId: id, sessionKey: key, state: session.state, statusText: session.statusText, viewport: VIEWPORT });
     initializeSession(session);
   } catch (err) {
