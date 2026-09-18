@@ -80,19 +80,11 @@ async function getBrowser() {
     for (let attempt = 1; attempt <= 4; attempt++) {
       try {
         const browser = await puppeteer.launch({
-          args: [
-            ...chromium.args,
-            '--disable-dev-shm-usage',
-            '--no-first-run',
-            '--no-default-browser-check',
-            '--renderer-process-limit=1',
-            '--disable-gpu',
-            '--disable-software-rasterizer',
-            '--mute-audio',
-          ],
+          args: [...chromium.args, '--disable-dev-shm-usage', '--no-first-run', '--no-default-browser-check'],
           defaultViewport: VIEWPORT,
           executablePath,
           headless: 'shell',
+          dumpio: true,
         });
         browser.on('disconnected', () => {
           console.error('Shared Chromium disconnected.');
