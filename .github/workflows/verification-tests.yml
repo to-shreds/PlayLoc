@@ -1,0 +1,43 @@
+name: Verification regression tests
+on:
+  push:
+    paths:
+      - 'browser_service/**'
+      - 'index.html'
+      - '.github/workflows/verification-tests.yml'
+  pull_request:
+    paths:
+      - 'browser_service/**'
+      - 'index.html'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --prefix browser_service --ignore-scripts
+      - name: Check JavaScript syntax
+        run: |
+          node --check browser_service/server.js
+          node --check browser_service/verification-flow.js
+          node --check browser_service/readonly-probe.js
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          Path('/tmp/courtflow-ui.js').write_text(re.search(r'<script>(.*)</script>',Path('index.html').read_text(),re.S).group(1))
+          PY
+          node --check /tmp/courtflow-ui.js
+      - name: Exercise browser, HTTP responses and mobile page
+        run: node --test browser_service/verification.test.js
+      - name: Save fixture screenshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-verification-fixture
+          path: browser_service/test-output/
+          retention-days: 7
