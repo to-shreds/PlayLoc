@@ -208,14 +208,15 @@ function verificationPaused(){
   $('resumeVerification').onclick=()=>startRemoteBrowser(row);
   renderPlan();
 }
-async function closeRemoteBrowser(quiet=false){
+async function closeRemoteBrowser(quiet=false,keepModal=false){
   ++browserGeneration;
   if(state.browserPoll){clearTimeout(state.browserPoll);state.browserPoll=null}
   const rb=state.remoteBrowser;state.remoteBrowser=null;
-  $('browserModal').classList.add('hidden');document.body.style.overflow='';
+  if(!keepModal){$('browserModal').classList.add('hidden');document.body.style.overflow=''}
+  else{$('browserModal').classList.remove('hidden');document.body.style.overflow='hidden';$('browserFrame').classList.add('hidden');$('browserLoading').classList.remove('hidden');$('browserRetry').classList.add('hidden')}
   if(rb?.objectUrl)URL.revokeObjectURL(rb.objectUrl);
   if(rb?.id&&rb?.key){try{await browserRequest(`/session/${encodeURIComponent(rb.id)}`,{method:'DELETE'},rb)}catch{}}
-  if(!quiet)verificationPaused();
+  if(!quiet&&!keepModal)verificationPaused();
 }
 async function sendBrowserInput(payload){
   const rb=state.remoteBrowser;if(!rb)return;
@@ -272,7 +273,11 @@ async function startRemoteBrowser(row){
   const generation=++browserGeneration;
   $('browserModal').classList.remove('hidden');document.body.style.overflow='hidden';
   $('browserRetry').classList.add('hidden');$('browserLoading').classList.remove('hidden');
-  $('browserStatus').textContent=`Opening ${row.slot.courtName}, ${timeLabel(row.start)}, using ${row.account.name}...`;
+  const ordinal=state.bookingQueue.length?Math.min(state.bookingCursor+1,state.bookingQueue.length):1;
+  const total=state.bookingQueue.length||1;
+  $('browserStatus').textContent=`Reservation ${ordinal} of ${total}: locking ${row.slot.courtName}, ${timeLabel(row.start)}, using ${row.account.name}...`;
+  const instruction=document.querySelector('.browser-instruction');
+  if(instruction)instruction.innerHTML='<b>Next:</b> PlayLocal requires human verification for each reservation. Complete this CAPTCHA; CourtFlow will confirm the booking and load the next planned reservation here automatically.';
   $('browserFrame').removeAttribute('src');$('browserFrame').classList.add('hidden');
   try{
     const ss=await auth(row.account);
@@ -302,8 +307,8 @@ $('browserFrame').addEventListener('click',e=>{const rb=state.remoteBrowser;if(!
 $('browserView').addEventListener('wheel',e=>{if(!state.remoteBrowser)return;e.preventDefault();sendBrowserInput({type:'wheel',deltaY:e.deltaY})},{passive:false});
 
 async function verifyRow(row){const ss=await auth(row.account);return rpc('verify_booking',{accountId:row.account.id,sessionToken:ss.sessionToken,slot:row.slot})}
-async function checkPendingBooking(manual=false){const p=state.pendingVerification;if(!p||state.pendingCheckRunning)return false;state.pendingCheckRunning=true;try{for(let i=0;i<4;i++){const v=await verifyRow(p.row);if(v.confirmed){await closeRemoteBrowser(true);p.row.status='booked';state.pendingVerification=null;$('bookingHelp').innerHTML='';state.bookingCursor++;renderPlan();log(`Confirmed ${p.row.slot.courtName} ${timeLabel(p.row.start)} for ${p.row.account.name}.`);await refreshCurrentBookings(false);state.pendingCheckRunning=false;await continuePlanBooking();return true}if(i<3)await new Promise(r=>setTimeout(r,1500))}if(manual)log('That reservation is not showing in PlayLocal Activity yet.');return false}catch(e){if(manual)log('Reservation check failed: '+e.message);return false}finally{state.pendingCheckRunning=false}}
-async function continuePlanBooking(){if(state.pendingVerification)return;while(state.bookingCursor<state.bookingQueue.length){const row=state.bookingQueue[state.bookingCursor];try{const result=await doBook(row.slot,row.account);row.status='booked';state.bookingCursor++;renderPlan();log(`Booked ${row.slot.courtName} ${timeLabel(row.start)} with ${row.account.name}${result?.reconciled?' and confirmed in Activity':''}.`)}catch(e){if(e.code==='VERIFICATION_REQUIRED'){const url=e.data?.reservationUrl||row.slot.reservationUrl||'';row.status='verification';state.pendingVerification={row,url};renderPlan();log(`${row.slot.courtName} ${timeLabel(row.start)} needs PlayLocal browser verification for ${row.account.name}.`);if(url)verificationHelp(row,url);else $('bookingHelp').textContent='PlayLocal requires verification, but no continuation URL was returned.';return}row.status='failed';row.label=e.message;renderPlan();log(`Stopped at ${row.slot.courtName} ${timeLabel(row.start)}: ${e.message}`);return}}$('bookingHelp').innerHTML='<span class="ok"><b>All planned reservations are confirmed.</b></span>';log('All planned reservations are confirmed.');await refreshCurrentBookings(false)}
+async function checkPendingBooking(manual=false){const p=state.pendingVerification;if(!p||state.pendingCheckRunning)return false;state.pendingCheckRunning=true;try{for(let i=0;i<4;i++){const v=await verifyRow(p.row);if(v.confirmed){const hasNext=state.bookingCursor+1<state.bookingQueue.length;await closeRemoteBrowser(true,hasNext);p.row.status='booked';state.pendingVerification=null;$('bookingHelp').innerHTML='';state.bookingCursor++;renderPlan();log(`Confirmed ${p.row.slot.courtName} ${timeLabel(p.row.start)} for ${p.row.account.name}.`);await refreshCurrentBookings(false);state.pendingCheckRunning=false;if(hasNext){$('browserStatus').textContent=`Booked. Loading reservation ${state.bookingCursor+1} of ${state.bookingQueue.length}...`;await continuePlanBooking()}else{await closeRemoteBrowser(true,false);await continuePlanBooking()}return true}if(i<3)await new Promise(r=>setTimeout(r,1500))}if(manual)log('That reservation is not showing in PlayLocal Activity yet.');return false}catch(e){if(manual)log('Reservation check failed: '+e.message);return false}finally{state.pendingCheckRunning=false}}
+async function continuePlanBooking(){if(state.pendingVerification)return;while(state.bookingCursor<state.bookingQueue.length){const row=state.bookingQueue[state.bookingCursor];try{const result=await doBook(row.slot,row.account);row.status='booked';state.bookingCursor++;renderPlan();log(`Booked ${row.slot.courtName} ${timeLabel(row.start)} with ${row.account.name}${result?.reconciled?' and confirmed in Activity':''}.`)}catch(e){if(e.code==='VERIFICATION_REQUIRED'){const url=e.data?.reservationUrl||row.slot.reservationUrl||'';row.status='verification';state.pendingVerification={row,url};renderPlan();log(`${row.slot.courtName} ${timeLabel(row.start)} needs PlayLocal browser verification for ${row.account.name}.`);if(url)verificationHelp(row,url);else $('bookingHelp').textContent='PlayLocal requires verification, but no continuation URL was returned.';return}row.status='failed';row.label=e.message;renderPlan();log(`Stopped at ${row.slot.courtName} ${timeLabel(row.start)}: ${e.message}`);return}}$('bookingHelp').innerHTML='<span class="ok"><b>All planned reservations are confirmed.</b></span>';log('All planned reservations are confirmed.');await refreshCurrentBookings(false);if(state.remoteBrowser||!$('browserModal').classList.contains('hidden'))await closeRemoteBrowser(true,false)}
 $('bookPlan').onclick=async()=>{if(state.pendingVerification){startRemoteBrowser(state.pendingVerification.row);return}if(state.bookingRunning)return;state.bookingRunning=true;try{setNextStep(4,'Booking in progress. Follow the prompt below if PlayLocal asks for verification.');state.bookingQueue=state.plan.filter(r=>r.status==='planned');state.bookingCursor=0;state.pendingVerification=null;$('bookingHelp').innerHTML='';await continuePlanBooking()}finally{state.bookingRunning=false;renderPlan()}};
 window.addEventListener('focus',()=>{if(state.pendingVerification)setTimeout(()=>checkPendingBooking(false),700)});document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state.pendingVerification)setTimeout(()=>checkPendingBooking(false),700)});
 
