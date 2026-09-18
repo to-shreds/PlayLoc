@@ -86,7 +86,7 @@ const $=id=>document.getElementById(id);
 const ADAPTER='https://courtflow-playlocal.onrender.com/adapter';
 const BROWSER_SERVICE='https://courtflow-browser-playlocal.onrender.com';
 const ACCOUNTS_KEY='cf_accounts_v1';
-const state={accounts:loadAccounts(),sessions:new Map(),facilities:[],matrix:null,selected:new Set(),plan:[],remoteBookings:[],bookingQueue:[],bookingCursor:0,pendingVerification:null,pendingCheckRunning:false,siteToken:sessionStorage.getItem('cf_site_token')||'',serverVault:false,remoteBrowser:null,browserPoll:null};
+const state={accounts:loadAccounts(),sessions:new Map(),facilities:[],matrix:null,selected:new Set(),plan:[],remoteBookings:[],bookingQueue:[],bookingCursor:0,pendingVerification:null,pendingCheckRunning:false,siteToken:sessionStorage.getItem('cf_site_token')||'',serverVault:false,remoteBrowser:null,remoteBrowserStarting:false,browserPoll:null};
 
 function loadAccounts(){try{const a=JSON.parse(localStorage.getItem(ACCOUNTS_KEY)||'[]');return Array.isArray(a)?a.filter(x=>x&&x.id&&x.name&&x.email&&typeof x.password==='string'):[]}catch{return []}}
 function saveAccounts(){localStorage.setItem(ACCOUNTS_KEY,JSON.stringify(state.accounts.map(a=>({id:a.id,name:a.name,email:a.email,password:a.password}))))}
@@ -243,25 +243,38 @@ async function pollRemoteBrowser(){
     $('browserRetry').classList.remove('hidden');
     log('Verification display failed: '+(e.message||String(e)));
   }
-  if(state.remoteBrowser===rb)state.browserPoll=setTimeout(pollRemoteBrowser,850);
+  if(state.remoteBrowser===rb)state.browserPoll=setTimeout(pollRemoteBrowser,1200);
 }
 async function startRemoteBrowser(row){
   if(!state.serverVault)return;
-  if(state.remoteBrowser)return;
-  $('browserModal').classList.remove('hidden');$('browserRetry').classList.add('hidden');$('browserStatus').textContent='Preparing a private PlayLocal browser…';$('browserFrame').removeAttribute('src');
+  if(state.remoteBrowser||state.remoteBrowserStarting)return;
+  state.remoteBrowserStarting=true;
+  $('browserModal').classList.remove('hidden');
+  $('browserRetry').classList.add('hidden');
+  $('browserStatus').textContent='Starting the private PlayLocal browser…';
+  $('browserFrame').removeAttribute('src');
+  $('browserFrame').classList.add('hidden');
+  $('browserLoading')?.classList.remove('hidden');
   try{
     const ss=await auth(row.account);
     const ticket=await rpc('browser_ticket',{accountId:row.account.id,sessionToken:ss.sessionToken,slot:row.slot});
     const r=await fetch(BROWSER_SERVICE+'/session/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ticket:ticket.ticket})});
     const b=await r.json().catch(()=>null);if(!r.ok||!b?.ok)throw Error(b?.message||'Could not start the verification browser.');
-    state.remoteBrowser={id:b.sessionId,key:b.sessionKey,viewport:b.viewport||{width:980,height:720},objectUrl:null};
+    state.remoteBrowser={id:b.sessionId,key:b.sessionKey,viewport:b.viewport||{width:430,height:760},objectUrl:null};
     $('browserStatus').textContent=b.statusText||'Remote browser ready.';
     pollRemoteBrowser();
-  }catch(e){$('browserStatus').textContent='Could not open verification browser: '+e.message;$('browserRetry').classList.remove('hidden');log('Verification browser failed: '+e.message)}
+  }catch(e){
+    state.remoteBrowser=null;
+    $('browserStatus').textContent='Could not open verification browser: '+e.message;
+    $('browserRetry').classList.remove('hidden');
+    $('browserLoading')?.classList.add('hidden');
+    log('Verification browser failed: '+e.message);
+  }finally{
+    state.remoteBrowserStarting=false;
+  }
 }
-$('browserRetry').onclick=async()=>{const p=state.pendingVerification;await closeRemoteBrowser();if(p)startRemoteBrowser(p.row)};
+$('browserRetry').onclick=async()=>{const row=state.pendingVerification?.row;await closeRemoteBrowser();if(row)startRemoteBrowser(row)};
 $('browserClose').onclick=closeRemoteBrowser;
-$('browserRetry').onclick=async()=>{await closeRemoteBrowser();const row=state.pendingVerification?.row;if(row)startRemoteBrowser(row)};
 $('browserUp').onclick=()=>sendBrowserInput({type:'wheel',deltaY:-560});
 $('browserDown').onclick=()=>sendBrowserInput({type:'wheel',deltaY:560});
 $('browserSendText').onclick=()=>{const v=$('browserText').value;if(v){sendBrowserInput({type:'text',text:v});$('browserText').value=''}};
