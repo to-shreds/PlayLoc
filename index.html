@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>CourtFlow</title>
-<meta name="courtflow-build" content="reservation-calendar-1">
+<meta name="courtflow-build" content="reservation-calendar-native-2">
 <style>
 :root{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#17261f;background:#f3f6f4;--green:#147a55;--green2:#dff4e9;--red:#a63131;--red2:#f9e2e2;--blue:#235ea7;--blue2:#dce9fb;--border:#d9e2dc;--muted:#6d7a73}*{box-sizing:border-box}body{margin:0}.wrap{max-width:1200px;margin:auto;padding:18px}.top{display:flex;align-items:center;justify-content:space-between;gap:14px}.brand{font-size:28px;font-weight:850;letter-spacing:-.5px}.sub{color:var(--muted);font-size:13px}.pill{border-radius:999px;padding:7px 11px;background:#e6efe9;font-size:13px}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0}.tabs button,.btn{border:0;border-radius:10px;padding:10px 14px;background:#e3e9e5;color:#17261f;font:inherit;cursor:pointer}.tabs button.active,.btn.primary{background:var(--green);color:#fff}.btn.danger{background:#fae0e0;color:#7f1e1e}.btn:disabled{opacity:.55;cursor:not-allowed}.page.hidden,.hidden{display:none}.card{background:#fff;border:1px solid var(--border);border-radius:16px;padding:16px;box-shadow:0 2px 10px #00000008;margin-bottom:14px}.card h2{font-size:19px;margin:0 0 12px}.controls{display:grid;grid-template-columns:1.2fr 1fr .8fr .8fr auto;gap:10px;align-items:end}.controls.second{grid-template-columns:1.7fr .7fr auto auto;margin-top:10px}.field label{display:block;font-size:12px;font-weight:750;margin:0 0 5px}.field input,.field select{width:100%;border:1px solid #cbd6cf;border-radius:9px;padding:10px;background:#fff;font:inherit}.small{font-size:12px;color:var(--muted)}.notice{padding:10px 12px;border-radius:10px;background:#eef4f0;font-size:13px;margin-top:10px}.legend{display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:9px 0}.swatch{width:14px;height:14px;border-radius:4px;display:inline-block;vertical-align:-2px;margin-right:5px}.swatch.green{background:var(--green2);border:1px solid #80c5a7}.swatch.red{background:var(--red2);border:1px solid #d7a0a0}.swatch.blue{background:var(--blue2);border:2px solid var(--blue)}.matrix-wrap{overflow:auto;border:1px solid var(--border);border-radius:12px;max-height:64vh;background:#fff}.matrix{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%}.matrix th,.matrix td{border-right:1px solid var(--border);border-bottom:1px solid var(--border);padding:7px;text-align:center;min-width:104px}.matrix th{background:#f6f8f7;font-size:12px;position:sticky;top:0;z-index:3}.matrix th:first-child{left:0;z-index:4}.matrix td:first-child{position:sticky;left:0;background:#fff;z-index:2;font-weight:750;min-width:84px}.matrix tr:last-child td{border-bottom:0}.matrix th:last-child,.matrix td:last-child{border-right:0}.cell{display:block;width:100%;min-height:46px;border:0;border-radius:9px;padding:6px;font:inherit;font-weight:750}.cell.available{background:var(--green2);color:#12613f;cursor:pointer}.cell.unavailable{background:var(--red2);color:#8a2929;cursor:default}.cell.unknown{background:#ecefee;color:#6c7470;cursor:default}.cell.selected{background:var(--blue2);color:#164d91;outline:2px solid var(--blue);outline-offset:-2px}.cell .tiny{display:block;font-size:10px;font-weight:600;opacity:.8;margin-top:2px}.plan-row,.account-row,.booking-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;align-items:center;padding:10px 0;border-top:1px solid #edf1ee}.plan-row:first-child,.account-row:first-child,.booking-row:first-child{border-top:0}.plan-row .who{text-align:right;font-weight:750}.ok{color:var(--green)}.bad{color:var(--red)}.status{white-space:pre-wrap;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;background:#0d1712;color:#d4f4e4;padding:12px;border-radius:10px;min-height:82px;max-height:280px;overflow:auto}.two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px}.account-row{grid-template-columns:1fr auto}.booking-row{grid-template-columns:1fr 1fr auto}.selected-summary{font-weight:750;margin-left:auto}.spinner{display:inline-block;width:15px;height:15px;border:2px solid #ffffff66;border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;vertical-align:-2px;margin-right:6px}@keyframes spin{to{transform:rotate(360deg)}}
 .step-banner{display:flex;gap:10px;align-items:center;background:#173f31;color:#fff;border-radius:14px;padding:12px 14px;margin-bottom:12px}.step-banner span{opacity:.9}.search-summary{align-items:center;justify-content:space-between;gap:12px}.search-summary:not(.hidden){display:flex}.plan-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.plan-head h2{margin-right:auto!important}.debug-card summary{cursor:pointer;font-weight:750}.browser-instruction{flex:1 1 100%;font-size:13px;background:#eef4f0;padding:9px 10px;border-radius:9px}.browser-more{flex:1 1 100%}.browser-more summary{cursor:pointer;font-size:12px;color:var(--muted)}.browser-keyboard{display:flex;gap:7px;margin-top:8px}.browser-keyboard input{flex:1}.browser-status{font-size:13px!important;font-weight:650;margin-top:2px}
@@ -27,7 +27,7 @@
   <div class="browser-card">
     <div class="browser-head"><div class="grow"><b>4. Complete PlayLocal verification</b><div id="browserStatus" class="browser-status">Opening remote browser…</div></div><button class="btn hidden" id="browserRetry">Retry</button><button class="btn" id="browserClose">Close</button></div>
     <div class="browser-view" id="browserView"><div id="browserLoading" style="color:#dbe7e1;text-align:center;padding:24px"><div class="spinner"></div><div style="margin-top:10px">Starting PlayLocal…</div></div><img id="browserFrame" class="hidden" alt="Interactive PlayLocal verification browser"></div>
-    <div class="browser-tools"><div class="browser-instruction"><b>Next:</b> Tap the verification control in the PlayLocal image above. CourtFlow will submit automatically when verification completes.</div><button class="btn" id="browserUp">↑</button><button class="btn" id="browserDown">↓</button><details class="browser-more"><summary>Keyboard controls</summary><div class="browser-keyboard"><input id="browserText" placeholder="Type only if PlayLocal asks"><button class="btn" id="browserSendText">Send</button><button class="btn" id="browserEnter">Enter</button></div></details></div>
+    <div class="browser-tools"><div class="browser-instruction"><b>Next:</b> Tap the verification control in the PlayLocal image above. CourtFlow will submit automatically when verification completes.</div><button class="btn primary" id="browserNative">Open in my browser</button><button class="btn" id="browserUp">↑</button><button class="btn" id="browserDown">↓</button><details class="browser-more"><summary>Keyboard controls</summary><div class="browser-keyboard"><input id="browserText" placeholder="Type only if PlayLocal asks"><button class="btn" id="browserSendText">Send</button><button class="btn" id="browserEnter">Enter</button></div></details></div>
   </div>
 </div>
 <div class="wrap" id="appShell">
@@ -100,6 +100,7 @@ const ACCOUNTS_KEY='cf_accounts_v1';
 const state={accounts:loadAccounts(),sessions:new Map(),facilities:[],matrix:null,selected:new Set(),plan:[],remoteBookings:[],bookingQueue:[],bookingCursor:0,pendingVerification:null,pendingCheckRunning:false,siteToken:sessionStorage.getItem('cf_site_token')||'',serverVault:false,remoteBrowser:null,remoteBrowserStarting:false,browserPoll:null};
 const courtToday=new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 let reservedMonth=courtToday.slice(0,7),bookingsLoaded=false,bookingsLoading=false,bookingsRefresh=null;
+state.verificationMode='native';
 
 function loadAccounts(){try{const a=JSON.parse(localStorage.getItem(ACCOUNTS_KEY)||'[]');return Array.isArray(a)?a.filter(x=>x&&x.id&&x.name&&x.email&&typeof x.password==='string'):[]}catch{return []}}
 function saveAccounts(){localStorage.setItem(ACCOUNTS_KEY,JSON.stringify(state.accounts.map(a=>({id:a.id,name:a.name,email:a.email,password:a.password}))))}
@@ -198,6 +199,7 @@ function renderPlan(){if(!state.plan.length){$('plan').innerHTML='<div class="sm
 async function doBook(slot,account){const ss=await auth(account);return rpc('book',{accountId:account.id,sessionToken:ss.sessionToken,slot,idempotencyKey:crypto.randomUUID(),expectedPriceCents:slot.priceCents||0})}
 function verificationHelp(row,url){
   const help=$('bookingHelp'),a=row.account,court=row.slot.courtName;
+  if(state.verificationMode==='native'){nativeHandoff(row);return}
   if(state.serverVault){
     help.innerHTML=`<div class="notice"><b>Verification needed for ${esc(a.name)}</b><div style="margin-top:6px">Opening PlayLocal verification now. Complete the verification when it appears. CourtFlow will submit and continue automatically.</div></div>`;
     startRemoteBrowser(row);
@@ -206,6 +208,22 @@ function verificationHelp(row,url){
   help.innerHTML=`<div class="notice"><b>Finish this reservation in PlayLocal</b><div style="margin-top:6px">Use <b>${esc(a.name)}</b> (${esc(a.email)}) to book <b>${esc(court)}</b> at <b>${timeLabel(row.start)}</b>. Complete PlayLocal's verification and submit. CourtFlow will check Activity when you return and continue the plan.</div><div style="margin-top:10px"><a class="btn primary" href="${esc(url)}" target="_blank" rel="noopener">Open PlayLocal</a> <button class="btn" id="checkPending">Check & continue</button></div></div>`;
   $('checkPending').onclick=()=>checkPendingBooking(true);
 }
+function safeNativeUrl(value){try{const u=new URL(value);return u.protocol==='https:'&&['www.playlocal.com','playlocal.com'].includes(u.hostname)&&/^\/facilities\/[^/]+\/reservations\/new\/?$/.test(u.pathname)?u.href:''}catch{return ''}}
+async function nativeHandoff(row){
+  if(!row)return;
+  state.verificationMode='native';
+  const rb=state.remoteBrowser;
+  $('browserStatus').textContent='Closing the verification display before opening your browser…';
+  const closed=await closeRemoteBrowser(true),uncertain=!!rb&&(closed?.unknown||((closed?.submissionAttempted??rb.submissionAttempted)&&!(closed?.submissionRejected??rb.submissionRejected)));
+  if(state.pendingVerification?.row!==row)return;
+  document.querySelector('.tabs button[data-page="calendar"]').click();
+  const url=safeNativeUrl(state.pendingVerification.url||row.slot.reservationUrl||''),date=new Date(row.slot.date+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+  $('bookingHelp').innerHTML=`<div class="notice"><b>Finish in your browser · ${esc(row.account.name)}</b><div style="margin-top:6px"><b>${esc(date)} · ${esc(row.slot.courtName)} · ${timeLabel(row.slot.start)} to ${timeLabel(row.slot.end)}</b></div><div style="margin-top:6px">${uncertain?'A submission was already sent. Check Activity before doing anything else. Do not submit the reservation again.':'Sign in to PlayLocal using this account. Select the court and time above, complete verification, and submit. Then return here and tap Check & continue.'}</div><div style="margin-top:10px">${url&&!uncertain?`<a class="btn primary" id="nativeOpen" href="${esc(url)}" target="_blank" rel="noopener noreferrer">Open PlayLocal</a> `:''}<button class="btn" id="checkPending">Check & continue</button>${state.serverVault&&!uncertain?' <button class="btn" id="useRemoteVerification">Use remote display</button>':''}</div><div id="nativeCheckStatus" class="small" role="status" style="margin-top:8px">${!url&&!uncertain?'The reservation link is unavailable. Open PlayLocal and select the court and time above.':'CourtFlow continues only after this account’s Activity confirms the exact reservation.'}</div></div>`;
+  $('checkPending').onclick=async()=>{const btn=$('checkPending');btn.disabled=true;const confirmed=await checkPendingBooking(true);if(btn.isConnected)btn.disabled=false;if(!confirmed&&$('nativeCheckStatus'))$('nativeCheckStatus').textContent='Not confirmed in this account’s Activity yet. Check that you used the correct account, court, date, and time.'};
+  if($('useRemoteVerification'))$('useRemoteVerification').onclick=()=>{state.verificationMode='remote';startRemoteBrowser(row)};
+  renderPlan();$('bookingHelp').scrollIntoView({behavior:'smooth',block:'center'});
+}
+$('browserNative').onclick=()=>nativeHandoff(state.pendingVerification?.row);
 
 let browserGeneration = 0;
 async function browserRequest(path, opts={}, rb=state.remoteBrowser){
@@ -227,8 +245,10 @@ async function closeRemoteBrowser(quiet=false,keepModal=false){
   if(!keepModal){$('browserModal').classList.add('hidden');document.body.style.overflow=''}
   else{$('browserModal').classList.remove('hidden');document.body.style.overflow='hidden';$('browserFrame').classList.add('hidden');$('browserLoading').classList.remove('hidden');$('browserRetry').classList.add('hidden')}
   if(rb?.objectUrl)URL.revokeObjectURL(rb.objectUrl);
-  if(rb?.id&&rb?.key){try{await browserRequest(`/session/${encodeURIComponent(rb.id)}`,{method:'DELETE'},rb)}catch{}}
+  let closeInfo=null;
+  if(rb?.id&&rb?.key){try{const response=await browserRequest(`/session/${encodeURIComponent(rb.id)}`,{method:'DELETE'},rb);const data=await response.json();closeInfo=response.ok&&typeof data.submissionAttempted==='boolean'?data:{unknown:true}}catch{closeInfo={unknown:true}}}
   if(!quiet&&!keepModal)verificationPaused();
+  return closeInfo;
 }
 async function sendBrowserInput(payload){
   const rb=state.remoteBrowser;if(!rb)return;
@@ -245,6 +265,7 @@ async function pollRemoteBrowser(){
     if(state.remoteBrowser!==rb)return;
     if(!sr.ok||!s.ok)throw Error(s.message||'Remote browser session failed.');
     $('browserStatus').textContent=s.statusText||'Loading PlayLocal...';
+    rb.submissionAttempted=!!s.submissionAttempted;rb.submissionRejected=!!s.submissionRejected;
     if(s.state==='confirmed'||s.state==='submitting'){
       if(!rb.lastCheck||Date.now()-rb.lastCheck>5000){
         rb.lastCheck=Date.now();

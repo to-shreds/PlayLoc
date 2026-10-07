@@ -3,6 +3,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 process.env.COURTFLOW_BROWSER_SECRET = 'local-fixture-secret-not-a-production-secret';
 const runtime = require('./server');
 const flow = require('./verification-flow');
@@ -114,6 +115,41 @@ test('full verification lifecycle regression suite', { timeout: 180000 }, async 
     assert.deepEqual(values, { court: '54', token: '', posts: 0 }); assert.equal(s.state, 'verification');
     await runtime.closeSession(s);
   });
+  await t.test('iframe-only security page is visible before a reservation form exists', async () => {
+    const browser = await runtime.getBrowser(), page = await browser.newPage();
+    await page.setRequestInterception(true);
+    page.on('request', req => req.abort());
+    await page.setContent('<h1>Verify you are human</h1><iframe title="Security challenge" src="https://challenges.cloudflare.com/turnstile/local-fixture"></iframe>');
+    const info = await page.evaluate(flow.reservationInfoDOM);
+    assert.equal(info.formPresent, false);
+    assert.equal(info.challengePresent, false);
+    assert.equal(info.securityChallenge, true);
+    const s = makeSession({ initializing: false, page });
+    await runtime.inspect(s);
+    assert.equal(s.state, 'verification');
+    assert.equal(s.frameReady, true);
+    assert.match(s.statusText, /security|verification/i);
+    assert.equal(s.submissionAttempted, false);
+    await runtime.closeSession(s);
+  });
+  await t.test('invalid required reservation field cannot start a submission', async () => {
+    const browser = await runtime.getBrowser(), page = await browser.newPage();
+    await page.setContent(`<form onsubmit="event.preventDefault();window.bookingPosts=(window.bookingPosts||0)+1">
+      <input type="hidden" name="reservation[reservable_id]" value="54">
+      <label>Player name<input required name="reservation[player_name]"></label>
+      <button type="submit">Reserve court</button></form>`);
+    assert.equal((await page.evaluate(flow.prepareReservationDOM, slot)).ready, true);
+    const info = await page.evaluate(flow.reservationInfoDOM);
+    assert.equal(info.formValid, false);
+    assert.match(JSON.stringify(info.invalidFields), /reservation\[player_name\]/);
+    const s = makeSession({ initializing: false, page, prepared: true, preparedAt: Date.now() - 10000,
+      courtStableSince: Date.now() - 10000 });
+    await runtime.inspect(s);
+    assert.equal(s.submissionAttempted, false);
+    assert.equal(await page.evaluate(() => window.bookingPosts || 0), 0);
+    assert.notEqual(s.state, 'submitting');
+    await runtime.closeSession(s);
+  });
   await t.test('only the exact reservation form submits once, never the search form', async () => {
     const s = makeSession(); await initialize(s); clearInterval(s.monitor); await delay(1000); await runtime.inspect(s);
     await s.page.click('#fixture-step');
@@ -221,4 +257,225 @@ test('full verification lifecycle regression suite', { timeout: 180000 }, async 
     await ui.screenshot({ path: path.join(__dirname, 'test-output', 'mobile-verification-fixture.png') });
     await ui.evaluate(() => closeRemoteBrowser(true)); await ui.close();
   });
+  await t.test('native browser handoff preserves the pending row and advances only after exact Activity confirmation', async () => {
+    const browser = await runtime.getBrowser(), ui = await browser.newPage();
+    const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+    const calls = { remoteStarts: 0, remoteDeletes: 0, bookings: [], verifications: [] };
+    let confirmed = false;
+    await ui.setRequestInterception(true);
+    ui.on('request', async req => {
+      try {
+        const u = new URL(req.url());
+        if (req.method() === 'OPTIONS') return req.respond({ status: 204, headers: {
+          'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET,POST,DELETE,OPTIONS',
+          'access-control-allow-headers': 'content-type,x-courtflow-session' } });
+        if (u.hostname === 'to-shreds.github.io') return req.respond({ status: 200, contentType: 'text/html', body: html });
+        if (u.hostname === 'courtflow-playlocal.onrender.com') {
+          const body = JSON.parse(req.postData() || '{}'); let data;
+          if (body.action === 'capabilities') data = { vendor: 'playlocal', siteAuthRequired: true };
+          else if (body.action === 'authenticate') data = { sessionToken: 'fixture-login' };
+          else if (body.action === 'verify_booking') {
+            calls.verifications.push(body);
+            data = { confirmed };
+          } else if (body.action === 'book') {
+            calls.bookings.push(body);
+            return req.respond({ status: 409, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' },
+              body: JSON.stringify({ ok: false, error: { code: 'VERIFICATION_REQUIRED', message: 'Local fixture verification',
+                definitive: true, data: { reservationUrl: body.slot.reservationUrl } } }) });
+          } else data = { reservations: [] };
+          return req.respond({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' },
+            body: JSON.stringify({ ok: true, data }) });
+        }
+        if (u.hostname === 'courtflow-browser-playlocal.onrender.com') {
+          if (u.pathname === '/session/start') calls.remoteStarts++;
+          if (req.method() === 'DELETE') calls.remoteDeletes++;
+          return req.respond({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' },
+            body: JSON.stringify({ ok: true }) });
+        }
+        if (u.protocol === 'data:' || u.protocol === 'blob:') return req.continue();
+        return req.abort();
+      } catch (err) { console.error('Native fixture request failed:', err.message); try { await req.abort(); } catch {} }
+    });
+    try {
+      await ui.goto('https://to-shreds.github.io/PlayLoc/'); await delay(100);
+      const firstSlot = { ...slot, reservationUrl: 'https://www.playlocal.com/facilities/22/reservations/new?date=2026-09-25&time=7am' };
+      const nextSlot = { ...slot, start: 480, end: 540,
+        reservationUrl: 'https://www.playlocal.com/facilities/22/reservations/new?date=2026-09-25&time=8am' };
+      await ui.evaluate(async slots => {
+        hideSiteGate(); applyServerVault([{ id: 'fixture', name: 'Fixture' }]);
+        const rows = slots.map((s, i) => ({ start: s.start, slot: s, status: i ? 'planned' : 'verification', account: state.accounts[0] }));
+        state.plan = rows; state.bookingQueue = rows; state.bookingCursor = 0;
+        state.pendingVerification = { row: rows[0], url: rows[0].slot.reservationUrl };
+        await nativeHandoff(rows[0]);
+      }, [firstSlot, nextSlot]);
+      assert.equal(await ui.$eval('#nativeOpen', el => el.href), firstSlot.reservationUrl);
+      assert.ok(await ui.$('#checkPending'));
+      assert.ok(await ui.$('#browserNative'));
+      assert.equal(await ui.evaluate(() => state.pendingVerification.row === state.bookingQueue[0]), true);
+      assert.equal(calls.remoteStarts, 0);
+      assert.equal(calls.bookings.length, 0);
+      await ui.click('#checkPending');
+      await ui.waitForFunction(() => !document.getElementById('checkPending').disabled
+        && /Not confirmed/i.test(document.getElementById('nativeCheckStatus').innerText), { timeout: 10000 });
+      assert.equal(calls.verifications.length, 4);
+      assert.equal(calls.bookings.length, 0);
+      assert.equal(await ui.evaluate(() => state.bookingCursor), 0);
+      assert.equal(await ui.evaluate(() => state.pendingVerification.row === state.bookingQueue[0]), true);
+      calls.verifications.length = 0;
+      confirmed = true;
+      await ui.click('#checkPending');
+      await ui.waitForFunction(() => state.bookingCursor === 1 && state.pendingVerification?.row === state.bookingQueue[1]
+        && document.getElementById('nativeOpen')?.href === state.bookingQueue[1].slot.reservationUrl, { timeout: 10000 });
+      assert.equal(calls.verifications.length, 1);
+      assert.equal(calls.verifications[0].accountId, 'fixture');
+      assert.equal(calls.verifications[0].slot.courtId, '54');
+      assert.equal(calls.verifications[0].slot.date, slot.date);
+      assert.equal(calls.verifications[0].slot.start, 420);
+      assert.equal(calls.bookings.length, 1);
+      assert.equal(calls.bookings[0].slot.start, 480);
+      assert.deepEqual(await ui.evaluate(() => ({ first: state.plan[0].status, next: state.plan[1].status,
+        mode: state.verificationMode })), { first: 'booked', next: 'verification', mode: 'native' });
+      assert.equal(calls.remoteStarts, 0);
+      assert.equal(await ui.$eval('#nativeOpen', el => el.href), nextSlot.reservationUrl);
+      await ui.evaluate(async () => {
+        state.remoteBrowser = { id: 'fixture-remote', key: 'fixture-key', submissionAttempted: true, submissionRejected: false };
+        await nativeHandoff(state.pendingVerification.row);
+      });
+      assert.equal(calls.remoteDeletes, 1);
+      assert.equal(await ui.$('#nativeOpen'), null, 'Uncertain prior submission must not expose another booking link');
+      assert.ok(await ui.$('#checkPending'));
+      assert.match(await ui.$eval('#bookingHelp', el => el.innerText), /Check Activity|do not submit/i);
+      await ui.evaluate(async () => {
+        state.pendingVerification.url = 'https://example.invalid/untrusted';
+        await nativeHandoff(state.pendingVerification.row);
+      });
+      assert.equal(await ui.$('#nativeOpen'), null, 'Untrusted destinations must not become handoff links');
+      assert.equal(calls.remoteStarts, 0);
+    } finally {
+      await ui.evaluate(() => closeRemoteBrowser(true));
+      await ui.close();
+    }
+  });
+});
+
+test('verification state regression guards', async t => {
+  function stateFixture(info, extra = {}) {
+    let clicks = 0;
+    const s = {
+      id: 'state-fixture', closed: false, initializing: false, busyInspect: false, state: 'verification',
+      prepared: true, preparedAt: Date.now() - 10000, courtStableSince: Date.now() - 10000,
+      submissionAttempted: false, payload: { slot },
+      page: { isClosed: () => false,
+        url: () => 'https://www.playlocal.com/facilities/22/reservations/new',
+        evaluate: async fn => {
+          if (fn.name === 'handlePendingReservationDOM') return { present: false };
+          if (fn.name === 'prepareReservationDOM') return { ready: false };
+          if (fn.name === 'submitReservationDOM') { clicks++; return true; }
+          if (fn.name === 'reservationInfoDOM') return info;
+          throw new Error('Unexpected fixture evaluation: ' + fn.name);
+        } }, ...extra,
+    };
+    return { s, clicks: () => clicks };
+  }
+  const readyForm = { text: '', formPresent: true, selectedCourtId: '54', challengePresent: false,
+    challengeReady: false, securityChallenge: false, submitPresent: true, submitDisabled: false,
+    formValid: true, invalidFields: [], errors: [] };
+  await t.test('preform security challenge remains visible without an outer response field', async () => {
+    const { s, clicks } = stateFixture({ ...readyForm, text: 'Verify you are human', formPresent: false,
+      selectedCourtId: '', submitPresent: false, securityChallenge: true }, { prepared: false });
+    await runtime.inspect(s);
+    assert.equal(s.frameReady, true);
+    assert.equal(s.state, 'verification');
+    assert.equal(clicks(), 0);
+  });
+  await t.test('invalid form remains available for correction without claiming a POST', async () => {
+    const { s, clicks } = stateFixture({ ...readyForm, formValid: false,
+      invalidFields: ['reservation[player_name]'] });
+    await runtime.inspect(s);
+    assert.equal(clicks(), 0);
+    assert.equal(s.submissionAttempted, false);
+    assert.notEqual(s.state, 'submitting');
+  });
+  await t.test('rejected observed POST becomes terminal and directs Activity reconciliation', async () => {
+    const { s, clicks } = stateFixture(readyForm, { submissionAttempted: true, submissionObserved: true,
+      submissionResponded: true, submissionStatus: 422, submissionAt: Date.now() - 1000 });
+    await runtime.inspect(s);
+    assert.equal(s.state, 'failed');
+    assert.match(s.statusText, /Check|Activity/i);
+    assert.equal(s.submissionAttempted, true);
+    assert.equal(clicks(), 0);
+  });
+  await t.test('unchanged form after completed POST eventually stops without retrying', async () => {
+    const { s, clicks } = stateFixture(readyForm, { submissionAttempted: true, submissionObserved: true,
+      submissionResponded: true, submissionAt: Date.now() - 46000 });
+    await runtime.inspect(s);
+    assert.equal(s.state, 'failed');
+    assert.match(s.statusText, /Check|Activity/i);
+    assert.equal(s.submissionAttempted, true);
+    assert.equal(clicks(), 0);
+  });
+});
+
+test('initialization cancellation releases singleton before transfer finishes', { timeout: 10000 }, async () => {
+  const originalFetch = global.fetch;
+  const pendingTransfers = [];
+  const listener = runtime.app.listen(0, '127.0.0.1');
+  await new Promise(resolve => listener.once('listening', resolve));
+  const local = 'http://127.0.0.1:' + listener.address().port;
+  const started = [];
+  const closes = [];
+  let nonce = 0;
+  function ticket() {
+    const payload = { exp: Math.floor(Date.now() / 1000) + 60, nonce: 'cancellation-fixture-' + (++nonce),
+      accountId: 'fixture', bridgeId: 'fixture', slot,
+      reservationUrl: 'https://www.playlocal.com/facilities/22/reservations/new' };
+    const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
+    return body + '.' + crypto.createHmac('sha256', process.env.COURTFLOW_BROWSER_SECRET).update(body).digest('base64url');
+  }
+  global.fetch = (url, options) => {
+    if (String(url).endsWith('/browser-session')) return new Promise(resolve => pendingTransfers.push(resolve));
+    return originalFetch(url, options);
+  };
+  async function start() {
+    const response = await originalFetch(local + '/session/start', { method: 'POST',
+      headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ticket: ticket() }) });
+    const data = await response.json();
+    assert.equal(response.status, 200, data.message);
+    started.push(data);
+    return data;
+  }
+  function close(remote) {
+    const promise = originalFetch(local + '/session/' + remote.sessionId, { method: 'DELETE',
+      headers: { 'X-CourtFlow-Session': remote.sessionKey } });
+    closes.push(promise);
+    return promise;
+  }
+  try {
+    const first = await start();
+    await delay(20);
+    assert.equal(pendingTransfers.length, 1);
+    const firstClose = close(first);
+    for (let i = 0; i < 25 && runtime.sessions.has(first.sessionId); i++) await delay(10);
+    assert.equal(runtime.sessions.has(first.sessionId), false, 'Cancellation must release ownership while initialization is pending');
+    const second = await start();
+    await delay(20);
+    assert.equal(pendingTransfers.length, 2);
+    close(second);
+    for (let i = 0; i < 25 && runtime.sessions.has(second.sessionId); i++) await delay(10);
+    assert.equal(runtime.sessions.has(second.sessionId), false);
+    for (const resolve of pendingTransfers) resolve(new Response(JSON.stringify({ ok: true,
+      cookies: [{ name: 'fixture', value: 'local-only' }] }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    assert.equal((await firstClose).status, 200);
+    for (const remote of started) assert.equal(runtime.sessions.has(remote.sessionId), false);
+  } finally {
+    for (const resolve of pendingTransfers) resolve(new Response(JSON.stringify({ ok: false, message: 'Fixture cancelled' }),
+      { status: 503, headers: { 'content-type': 'application/json' } }));
+    global.fetch = originalFetch;
+    for (const remote of started) {
+      const session = runtime.sessions.get(remote.sessionId);
+      if (session) await runtime.closeSession(session);
+    }
+    await Promise.allSettled(closes);
+    await new Promise(resolve => listener.close(resolve));
+  }
 });

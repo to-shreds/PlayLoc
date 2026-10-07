@@ -8,13 +8,17 @@ CourtFlow is a browser-first PlayLocal court calendar and booking concept. This 
 
 The HTML app uses the hard-wired Render adapter at `https://courtflow-playlocal.onrender.com/adapter`. West Roxbury is the default search location. Users choose a venue and date, select exact court/hour cells, review account assignments, and book.
 
+My calendar is the opening tab. It combines Activity records from every account into an Eastern-time month view and date/time agenda, showing West Roxbury High School Court 1, 2 or 3 without account names. Refresh retrieves current records; incomplete account loads are visibly flagged.
+
 In the primary hosted configuration, a site password unlocks three server-managed account nicknames. PlayLocal usernames and passwords stay in Render environment variables. GitHub, HTML, localStorage, and client request payloads do not contain the server-held credentials. The original browser-saved account mode remains available only when the server vault is not configured.
 
 ## Backend and verification
 
 `playlocal_server.py` implements authentication, availability, free booking, and reservation history. Each PlayLocal account has separate HTTP cookie/session state. History and final confirmation use PlayLocal's authenticated Activity route at `/user/reservations`.
 
-`browser_service/server.js` supplies the interactive PlayLocal verification display at `https://courtflow-browser-playlocal.onrender.com`. A signed, one-use ticket authorizes transfer of an already-authenticated session directly between the two Render services. The temporary PlayLocal page is rendered as authenticated JPEG responses. The user's clicks complete the real verification; CourtFlow does not synthesize verification tokens.
+CAPTCHA defaults to Open PlayLocal in the user's normal browser. The user signs in to the assigned account, selects the displayed exact court/date/time, completes verification and submits, then returns to Check & continue. CourtFlow verifies the account's Activity against that exact reservation before advancing the queue. The remote server login is not transferred to the user's browser, so switching accounts may require a PlayLocal sign-in there.
+
+`browser_service/server.js` retains an optional interactive verification display at `https://courtflow-browser-playlocal.onrender.com`. A signed, one-use ticket authorizes transfer of an already-authenticated session directly between the two Render services. The temporary PlayLocal page is rendered as authenticated JPEG responses. Cloudflare does not support automated browsers such as Puppeteer for production challenges, so this optional display is not a reliable replacement for the normal browser path. CourtFlow does not synthesize verification tokens.
 
 The current Chromium configuration uses one active verification at a time. A second request is rejected while another verification is open, rather than silently closing somebody else's page. Bookings are processed sequentially. The image is displayed only after it decodes successfully, startup status polls remain nonterminal, and the pre-booking form's "reservation receipt" text is not treated as success. Only the exact selected court's reservation form can be submitted. An uncertain submission is not automatically repeated; Activity reconciliation determines whether it booked.
 
@@ -25,6 +29,8 @@ Paid reservations remain unsupported. The optional Android experiment is not req
 ```bash
 npm install --prefix browser_service --ignore-scripts
 node --test browser_service/verification.test.js
+pip install -r requirements.txt
+python -m unittest discover -s tests
 ```
 
 The suite exercises actual Chromium pages, authenticated HTTP frame responses, delayed startup, cancellation, failed initialization, false receipt text, exact court selection, single submission, read-only guards, and the mobile HTML interface. All PlayLocal-looking content in this suite is a local fixture. It does not use live accounts or create reservations. The permanent GitHub Actions verification workflow runs it after browser-service or frontend changes.

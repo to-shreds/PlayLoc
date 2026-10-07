@@ -1,11 +1,6 @@
 name: Add remote browser verification
 
 on:
-  push:
-    paths:
-      - 'browser_service/**'
-      - 'scripts/add_remote_browser.py'
-      - '.github/workflows/add-remote-browser.yml'
   workflow_dispatch:
 
 permissions:

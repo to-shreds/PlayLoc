@@ -886,20 +886,27 @@ def _slot_start_label(slot):
 
 
 def _reservation_row_matches_slot(row, slot):
-    if row.get('date') and row.get('date') != slot.get('date'):
+    if str(row.get('status') or '').lower() in ('cancelled', 'canceled', 'past', 'expired'):
+        return False
+    if not row.get('date') or row.get('date') != slot.get('date'):
         return False
     expected = _slot_start_label(slot).upper()
-    if row.get('start') and str(row.get('start')).upper() != expected:
+    if not row.get('start') or str(row.get('start')).upper() != expected:
         return False
     text = clean((row.get('title') or '') + ' ' + (row.get('text') or '')).lower()
     wanted = clean(slot.get('courtName') or '').lower()
-    if wanted and re.search(r'court\s*\d+', wanted, re.I):
-        # History usually contains the court name. If it does, require the exact court;
-        # if it omits court text entirely, date/time is still a useful unique match.
-        has_any_court = bool(re.search(r'court\s*\d+', text, re.I))
-        if has_any_court and wanted not in text:
+    pattern = r'(?:court\s*#?\s*|west roxbury high school\s*)(\d+)\b'
+    requested_court = re.search(pattern, wanted, re.I)
+    actual_court = re.search(pattern, text, re.I)
+    if requested_court:
+        if not actual_court or actual_court.group(1) != requested_court.group(1):
             return False
-    return bool(row.get('date') or row.get('start'))
+    elif not wanted or wanted not in text:
+        return False
+    facility = clean(slot.get('facilityName') or '').lower()
+    if facility and facility not in text:
+        return False
+    return True
 
 
 def _reconcile_created_reservation(s, slot):

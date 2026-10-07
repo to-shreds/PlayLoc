@@ -3,7 +3,7 @@ const crypto = require('crypto');
 const puppeteer = require('puppeteer-core');
 const chromium = require('@sparticuz/chromium');
 const { inspectSession, prepareReservationDOM, confirmationLike } = require('./verification-flow');
-const BUILD = 'verification-lifecycle-2';
+const BUILD = 'verification-native-handoff-3';
 
 const PORT = Number(process.env.PORT || 10000);
 const MAIN_API = process.env.COURTFLOW_MAIN_API || 'https://courtflow-playlocal.onrender.com';
@@ -127,6 +127,7 @@ async function fetchSessionMaterial(bridgeId, accountId) {
       'authorization': 'Bearer ' + SHARED_SECRET,
     },
     body: JSON.stringify({ bridgeId, accountId }),
+    signal: AbortSignal.timeout(25000),
   });
   const data = await r.json().catch(() => null);
   if (!r.ok || !data?.ok || !Array.isArray(data.cookies) || !data.cookies.length) {
@@ -188,11 +189,10 @@ async function closeSession(session) {
   if (!session || session.closed) return;
   session.closed = true;
   if (session.monitor) clearInterval(session.monitor);
-  try { await session.page?.close(); } catch {}
-  if (session.initPromise) { try { await session.initPromise; } catch {} }
-  session.page = null;
   sessions.delete(session.id);
   if (activeSessionId === session.id) activeSessionId = null;
+  try { await session.page?.close(); } catch {}
+  session.page = null;
 }
 
 app.get('/health', (req, res) => res.json({ ok: true, service: 'courtflow-browser', build: BUILD }));
@@ -257,6 +257,18 @@ async function initializeSession(session, dependencies = {}) {
           if (request.method() === 'POST' && ['playlocal.com', 'www.playlocal.com'].includes(u.hostname)
               && u.pathname === `/facilities/${session.payload.slot.facilityId}/reservations`) {
             session.submissionAttempted = true;
+            session.submissionObserved = true;
+            session.submissionAt ||= Date.now();
+          }
+        } catch {}
+      });
+      page.on('response', response => {
+        try {
+          const request = response.request(), u = new URL(response.url());
+          if (request.method() === 'POST' && ['playlocal.com', 'www.playlocal.com'].includes(u.hostname)
+              && u.pathname === `/facilities/${session.payload.slot.facilityId}/reservations`) {
+            session.submissionResponded = true;
+            session.submissionStatus = response.status();
           }
         } catch {}
       });
@@ -329,7 +341,7 @@ app.post('/session/start', async (req, res) => {
 app.get('/session/:id/status', requireSession, async (req, res) => {
   const s = req.remoteSession;
   await inspect(s);
-  res.json({ ok: true, state: s.state, statusText: s.statusText, viewport: VIEWPORT, build: BUILD, readOnly: !!s.readOnly, selectedCourtId: s.selectedCourtId || '', challengePresent: !!s.challengePresent, submissionAttempted: !!s.submissionAttempted, frameReady: !!s.frameReady && !s.initializing && !!s.page && !s.page.isClosed() && s.state !== 'failed', ageSeconds: Math.round((Date.now() - s.createdAt) / 1000) });
+  res.json({ ok: true, state: s.state, statusText: s.statusText, viewport: VIEWPORT, build: BUILD, readOnly: !!s.readOnly, selectedCourtId: s.selectedCourtId || '', challengePresent: !!s.challengePresent, submissionAttempted: !!s.submissionAttempted, submissionObserved: !!s.submissionObserved, submissionRejected: !!s.submissionRejected, frameReady: !!s.frameReady && !s.initializing && !!s.page && !s.page.isClosed() && s.state !== 'failed', ageSeconds: Math.round((Date.now() - s.createdAt) / 1000) });
 });
 
 app.get('/session/:id/frame', requireSession, async (req, res) => {
@@ -371,8 +383,9 @@ app.post('/session/:id/input', requireSession, async (req, res) => {
 });
 
 app.delete('/session/:id', requireSession, async (req, res) => {
-  await closeSession(req.remoteSession);
-  res.json({ ok: true });
+  const s = req.remoteSession;
+  await closeSession(s);
+  res.json({ ok: true, submissionAttempted: !!s.submissionAttempted, submissionObserved: !!s.submissionObserved, submissionRejected: !!s.submissionRejected });
 });
 
 setInterval(() => {
@@ -427,4 +440,3 @@ async function shutdownBrowser() {
   try { await browser?.close(); } catch {}
 }
 module.exports = { app, sessions, inspect, initializeSession, closeSession, getBrowser, shutdownBrowser, confirmationLike, tryPrepareReservation, VIEWPORT };
-

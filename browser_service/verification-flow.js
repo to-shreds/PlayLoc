@@ -89,12 +89,19 @@ function reservationInfoDOM() {
   const root = form || document;
   const challenge = root.querySelector('[name="cf-turnstile-response"], [name="g-recaptcha-response"], [name="h-captcha-response"]');
   const submit = form?.querySelector('button[type="submit"], input[type="submit"]');
+  const securityChallenge = !!document.querySelector('.cf-turnstile, .g-recaptcha, .h-captcha, iframe[src*="challenges.cloudflare.com"], iframe[src*="recaptcha"], iframe[src*="hcaptcha.com"]');
+  const invalidFields = form ? [...form.elements].filter(el => el.willValidate && !el.validity.valid).map(el => el.name || el.id || 'required field') : [];
+  const errors = [...document.querySelectorAll('[role="alert"], .alert-danger, #error_explanation, .error-explanation, .validation-error')].map(el => String(el.innerText || '').trim()).filter(Boolean);
   return {
     text: document.body?.innerText || '',
     formPresent: !!form,
     selectedCourtId: form ? String(new FormData(form).get('reservation[reservable_id]') || '') : '',
     challengePresent: !!challenge,
     challengeReady: !!String(challenge?.value || '').trim(),
+    securityChallenge,
+    formValid: !!form && invalidFields.length === 0,
+    invalidFields,
+    hasErrors: errors.length > 0,
     submitPresent: !!submit,
     submitDisabled: !submit || submit.disabled || submit.getAttribute('aria-disabled') === 'true',
   };
@@ -103,6 +110,7 @@ function reservationInfoDOM() {
 function submitReservationDOM({ courtId }) {
   const form = document.querySelector('form[data-courtflow-reservation="true"]');
   if (!form || String(new FormData(form).get('reservation[reservable_id]') || '') !== String(courtId)) return false;
+  if (!form.checkValidity()) return false;
   const submit = form.querySelector('button[type="submit"], input[type="submit"]');
   if (!submit || submit.disabled || submit.getAttribute('aria-disabled') === 'true') return false;
   submit.click();
@@ -171,12 +179,12 @@ async function inspectSession(session) {
     }
     const info = await page.evaluate(reservationInfoDOM);
     if (session.closed) return;
-    session.challengePresent = info.challengePresent;
+    session.challengePresent = info.challengePresent || info.securityChallenge;
     const waiting = /please wait for verification to complete|complete verification|verify you are human|verification required|checking your browser|performing security verification/i.test(info.text);
     if (!session.prepared || !info.formPresent) {
-      session.frameReady = !!info.challengePresent;
+      session.frameReady = !!info.challengePresent || !!info.securityChallenge || waiting;
       session.state = 'verification';
-      session.statusText = info.challengePresent
+      session.statusText = session.frameReady
         ? 'Complete the PlayLocal security check shown below. CourtFlow will lock the exact court afterward.'
         : 'Loading the exact requested court...';
       return;
@@ -204,19 +212,36 @@ async function inspectSession(session) {
       return;
     }
     if (session.submissionAttempted) {
+      const rejected = session.submissionResponded && (info.hasErrors || session.submissionStatus >= 400);
+      const timedOut = session.submissionAt && Date.now() - session.submissionAt > 45000;
+      if (rejected || timedOut) {
+        session.submissionRejected = !!rejected;
+        session.state = 'failed';
+        session.statusText = rejected
+          ? 'PlayLocal did not accept the submission. Check Activity before trying again in your own browser.'
+          : 'PlayLocal has not confirmed the submission. Check Activity; do not submit this reservation again.';
+        return;
+      }
       session.state = 'submitting';
       session.statusText = 'Submitted once. Checking PlayLocal for confirmation; do not book again.';
       return;
     }
-    const ready = info.challengePresent ? info.challengeReady : !waiting && Date.now() - session.preparedAt > 3500;
+    if (!info.formValid) {
+      session.state = 'verification';
+      session.statusText = 'Complete the required PlayLocal fields shown below before reserving.';
+      return;
+    }
+    const ready = session.challengePresent ? info.challengeReady : !waiting && Date.now() - session.preparedAt > 3500;
     if (ready && info.submitPresent && !info.submitDisabled) {
       session.submissionAttempted = true;
+      session.submissionAt = Date.now();
       session.submitting = true;
       session.state = 'submitting';
       session.statusText = 'Verification complete. Submitting your selected court.';
       // Do not retry an uncertain submission. The Activity check reconciles it.
       if (!await page.evaluate(submitReservationDOM, session.payload.slot)) {
         session.submissionAttempted = false;
+        session.submissionAt = 0;
         session.submitting = false;
         session.state = 'verification';
         session.statusText = 'Waiting for PlayLocal to enable the reservation button.';

@@ -4,11 +4,15 @@ on:
     paths:
       - 'browser_service/**'
       - 'index.html'
+      - 'playlocal_server.py'
+      - 'tests/**'
       - '.github/workflows/verification-tests.yml'
   pull_request:
     paths:
       - 'browser_service/**'
       - 'index.html'
+      - 'playlocal_server.py'
+      - 'tests/**'
   workflow_dispatch:
 permissions:
   contents: read
@@ -22,6 +26,9 @@ jobs:
         with:
           node-version: '24'
       - run: npm install --prefix browser_service --ignore-scripts
+      - run: pip install -r requirements.txt
+      - name: Verify exact Activity matching
+        run: python -m unittest discover -s tests
       - name: Check JavaScript syntax
         run: |
           node --check browser_service/server.js
