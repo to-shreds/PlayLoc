@@ -6,6 +6,7 @@ import base64, hashlib, hmac, json, os, re, secrets, threading, time, requests
 from curl_cffi import requests as curl_requests
 
 BASE = 'https://www.playlocal.com'
+BUILD = 'activity-exact-native-3'
 UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36'
 SESSIONS = {}
 IDEM = {}
@@ -1073,6 +1074,7 @@ class Handler(SimpleHTTPRequestHandler):
             raw = b'CourtFlow PlayLocal adapter'
             self.send_response(200)
             self.send_header('Content-Type', 'text/plain')
+            self.send_header('X-CourtFlow-Build', BUILD)
             self.cors()
             self.send_header('Content-Length', str(len(raw)))
             self.end_headers()
