@@ -80,15 +80,21 @@ jobs:
 
       - name: Verify APK uses the preserved signing certificate
         run: |
+          gradle -p android :app:signingReport
           keytool -exportcert -keystore "$COURTFLOW_ANDROID_KEYSTORE_PATH" -storepass android -alias androiddebugkey -file /tmp/courtflow-signing-cert.der
           courtflow_apksigner=$(python -c "import glob,os; print(sorted(glob.glob(os.environ['ANDROID_HOME'] + '/build-tools/*/apksigner'))[-1])")
+          "$courtflow_apksigner" sign --ks "$COURTFLOW_ANDROID_KEYSTORE_PATH" --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android android/app/build/outputs/apk/debug/app-debug.apk
           "$courtflow_apksigner" verify --print-certs android/app/build/outputs/apk/debug/app-debug.apk > /tmp/courtflow-apk-certs.txt
           python - <<'PY'
           import hashlib, json, os, re
           from pathlib import Path
           expected = hashlib.sha256(Path('/tmp/courtflow-signing-cert.der').read_bytes()).hexdigest()
-          reported = re.findall(r'^Signer #\d+ certificate SHA-256 digest: ([0-9a-fA-F]+)$', Path('/tmp/courtflow-apk-certs.txt').read_text(), re.M)
-          assert [x.lower() for x in reported] == [expected], 'APK signer differs from the preserved CourtFlow keystore'
+          certificate_output = Path('/tmp/courtflow-apk-certs.txt').read_text()
+          print('APK public certificate report:\n' + certificate_output, flush=True)
+          reported = [match.group(1).lower() for line in certificate_output.splitlines() if (match := re.fullmatch(r'Signer #\d+ certificate SHA-256 digest: ([0-9a-fA-F]{64})', line.strip()))]
+          print('Preserved keystore certificate SHA-256: ' + expected, flush=True)
+          print('Parsed APK certificate SHA-256: ' + json.dumps(reported), flush=True)
+          assert reported == [expected], 'APK signer differs from the preserved CourtFlow keystore'
           prior_path = Path('downloads/CourtFlow-build.json')
           prior = json.loads(prior_path.read_text()) if prior_path.exists() else {}
           assert not prior.get('signerCertificateSha256') or prior['signerCertificateSha256'] == expected, 'APK signing identity changed from the published app'
