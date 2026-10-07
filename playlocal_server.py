@@ -6,7 +6,7 @@ import base64, hashlib, hmac, json, os, re, secrets, threading, time, requests
 from curl_cffi import requests as curl_requests
 
 BASE = 'https://www.playlocal.com'
-BUILD = 'activity-exact-native-3'
+BUILD = 'authenticated-native-session-4'
 UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36'
 SESSIONS = {}
 IDEM = {}
@@ -151,7 +151,7 @@ def _b64url(data):
     return base64.urlsafe_b64encode(data).decode().rstrip('=')
 
 
-def issue_browser_ticket(req):
+def issue_browser_ticket(req, native=False):
     secret = os.environ.get('COURTFLOW_BROWSER_SECRET', '')
     if not secret:
         raise ApiError('BROWSER_UNAVAILABLE', 'Interactive browser verification is not configured.', 503, True)
@@ -177,13 +177,20 @@ def issue_browser_ticket(req):
         raise ApiError('SLOT_UNAVAILABLE', 'PlayLocal no longer shows that time as available.', 409, True)
     if not form:
         raise ApiError('UPSTREAM_CHANGED', 'PlayLocal reservation form was not found for interactive verification.', 502)
+    if native:
+        prices = [int(round(float(x) * 100)) for x in re.findall(r'\$(\d+(?:\.\d{1,2})?)', clean(doc.get_text(' ', strip=True)))]
+        if int(slot.get('priceCents') or 0) > 0 or max(prices, default=0) > 0:
+            raise ApiError('INTERACTIVE_REQUIRED', 'This reservation has a charge; automatic paid booking is not enabled.', 409, True)
     set_fields(form, slot)  # validates that the selected exact court is still offered
     safe_slot = {k: slot.get(k) for k in (
         'slotId', 'facilityId', 'facilityName', 'courtId', 'courtName', 'date',
         'start', 'end', 'priceCents', 'searchLocation'
     )}
+    if native:
+        safe_slot.update(start=int(slot['start']), end=int(slot['end']), priceCents=0)
     bridge_id = secrets.token_urlsafe(24)
-    bridge_exp = time.time() + 10 * 60
+    ttl = 120 if native else 10 * 60
+    bridge_exp = time.time() + ttl
     with LOCK:
         expired = [k for k, v in BROWSER_BRIDGES.items() if v.get('exp', 0) <= time.time()]
         for k in expired:
@@ -192,6 +199,9 @@ def issue_browser_ticket(req):
             'accountId': account_id,
             'sessionToken': session_token,
             'exp': bridge_exp,
+            'aud': 'native' if native else 'remote',
+            'slot': safe_slot,
+            'reservationUrl': booking_url,
         }
     payload = {
         'exp': int(bridge_exp),
@@ -201,10 +211,12 @@ def issue_browser_ticket(req):
         'slot': safe_slot,
         'reservationUrl': booking_url,
     }
+    if native:
+        payload['aud'] = 'native'
     raw = json.dumps(payload, separators=(',', ':'), sort_keys=True).encode()
     body = _b64url(raw)
     sig = _b64url(hmac.new(secret.encode(), body.encode(), hashlib.sha256).digest())
-    return {'ticket': body + '.' + sig, 'expiresInSeconds': 10 * 60}
+    return {'ticket': body + '.' + sig, 'expiresInSeconds': ttl}
 
 
 def browser_credentials(account_id):
@@ -214,13 +226,17 @@ def browser_credentials(account_id):
     return {'username': account['username'], 'password': account['password']}
 
 
-def browser_session_material(bridge_id, account_id):
+def browser_session_material(bridge_id, account_id, native=False):
     bridge_id = str(bridge_id or '')
     account_id = str(account_id or '')
     now = time.time()
     with LOCK:
-        item = BROWSER_BRIDGES.pop(bridge_id, None)
-    if not item or item.get('exp', 0) <= now or item.get('accountId') != account_id:
+        item = BROWSER_BRIDGES.get(bridge_id)
+        expected_aud = 'native' if native else 'remote'
+        valid = item and item.get('exp', 0) > now and item.get('accountId') == account_id and item.get('aud', 'remote') == expected_aud
+        if valid:
+            BROWSER_BRIDGES.pop(bridge_id)
+    if not valid:
         raise ApiError('BROWSER_SESSION', 'The temporary PlayLocal browser session expired. Please retry verification.', 401, True)
     sess = get_session(item.get('sessionToken', ''), account_id)
     cookies = []
@@ -233,18 +249,24 @@ def browser_session_material(bridge_id, account_id):
                 value = str(getattr(c, 'value', '') or '')
                 if not name:
                     continue
-                domain = str(getattr(c, 'domain', '') or '.playlocal.com')
+                domain = str(getattr(c, 'domain', '') or ('' if native else '.playlocal.com'))
                 path = str(getattr(c, 'path', '') or '/')
+                if native and (domain.lstrip('.').lower() not in ('playlocal.com', 'www.playlocal.com') or name.lower().startswith(('cf_', '__cf', '_cf'))):
+                    continue
+                rest = getattr(c, '_rest', {}) or {}
                 cookies.append({
                     'name': name, 'value': value, 'domain': domain, 'path': path,
-                    'secure': bool(getattr(c, 'secure', False)),
+                    'secure': True if native else bool(getattr(c, 'secure', False)),
+                    'httpOnly': any(str(k).lower() == 'httponly' for k in rest),
                 })
         except TypeError:
             pass
-    if not cookies and cookie_store is not None:
+    if not cookies and cookie_store is not None and not native:
         try:
             values = cookie_store.get_dict() if hasattr(cookie_store, 'get_dict') else dict(cookie_store)
             for name, value in values.items():
+                if native and str(name).lower().startswith(('cf_', '__cf', '_cf')):
+                    continue
                 cookies.append({
                     'name': str(name), 'value': str(value),
                     'domain': '.playlocal.com', 'path': '/', 'secure': True,
@@ -253,7 +275,31 @@ def browser_session_material(bridge_id, account_id):
             pass
     if not cookies:
         raise ApiError('BROWSER_SESSION', 'CourtFlow could not transfer the authenticated PlayLocal session.', 502, True)
+    if native:
+        account = configured_server_accounts().get(account_id)
+        if not account:
+            raise ApiError('ACCOUNT_NOT_FOUND', 'That server account is not configured.', 404, True)
+        return {'cookies': cookies, 'slot': item['slot'], 'reservationUrl': item['reservationUrl'], 'accountName': account['name']}
     return {'cookies': cookies, 'userAgent': UA}
+
+
+def native_session_material(ticket):
+    """Redeem a signed, short-lived, single-use capability in the native app only."""
+    secret = os.environ.get('COURTFLOW_BROWSER_SECRET', '')
+    try:
+        if not secret or not isinstance(ticket, str) or len(ticket) > 12000:
+            raise ValueError()
+        body, sig = ticket.split('.')
+        expected = _b64url(hmac.new(secret.encode(), body.encode(), hashlib.sha256).digest())
+        if not secrets.compare_digest(sig, expected):
+            raise ValueError()
+        payload = json.loads(base64.urlsafe_b64decode(body + '=' * (-len(body) % 4)))
+        if payload.get('aud') != 'native' or not isinstance(payload.get('exp'), int) or payload['exp'] <= time.time():
+            raise ValueError()
+        bridge_id, account_id = payload['bridgeId'], payload['accountId']
+    except (ValueError, TypeError, KeyError, UnicodeError):
+        raise ApiError('NATIVE_SESSION', 'The automatic sign-in ticket is invalid or expired. Retry in CourtFlow.', 401, True)
+    return browser_session_material(bridge_id, account_id, native=True)
 
 
 def login(account_id, username, password):
@@ -1040,6 +1086,8 @@ def dispatch(req):
         return verify_booking(req)
     if action == 'browser_ticket':
         return issue_browser_ticket(req)
+    if action == 'native_ticket':
+        return issue_browser_ticket(req, native=True)
     if action == 'book':
         return book(req)
     raise ApiError('ACTION', 'Unknown adapter action.')
@@ -1104,6 +1152,28 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_error(404)
 
     def do_POST(self):
+        if self.path == '/native-session':
+            try:
+                n = int(self.headers.get('Content-Length', '0'))
+                if n < 1 or n > 16000:
+                    raise ApiError('NATIVE_SESSION', 'Invalid automatic sign-in request.', 400, True)
+                req = json.loads(self.rfile.read(n))
+                payload = {'ok': True, **native_session_material(req.get('ticket'))}
+                status = 200
+            except ApiError as e:
+                payload = {'ok': False, 'message': e.message}
+                status = e.status
+            except Exception:
+                payload = {'ok': False, 'message': 'Automatic sign-in transfer failed. Retry in CourtFlow.'}
+                status = 400
+            raw = json.dumps(payload).encode()
+            self.send_response(status)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Cache-Control', 'no-store')
+            self.send_header('Content-Length', str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+            return
         if self.path == '/browser-session':
             try:
                 expected = os.environ.get('COURTFLOW_BROWSER_SECRET', '')

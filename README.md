@@ -16,13 +16,15 @@ In the primary hosted configuration, a site password unlocks three server-manage
 
 `playlocal_server.py` implements authentication, availability, free booking, and reservation history. Each PlayLocal account has separate HTTP cookie/session state. History and final confirmation use PlayLocal's authenticated Activity route at `/user/reservations`.
 
-CAPTCHA defaults to Open PlayLocal in the user's normal browser. The user signs in to the assigned account, selects the displayed exact court/date/time, completes verification and submits, then returns to Check & continue. CourtFlow verifies the account's Activity against that exact reservation before advancing the queue. The remote server login is not transferred to the user's browser, so switching accounts may require a PlayLocal sign-in there.
+The Android app opens PlayLocal already signed in to the assigned saved account. CourtFlow issues a signed ticket that expires after two minutes and can be redeemed once by native code at `/native-session`. The app installs authenticated PlayLocal cookies, selects the exact court, and submits once after genuine verification completes. No account password is sent to the HTML or APK. Only exact Activity confirmation advances the booking queue. A rejected session refreshes automatically once; an uncertain submission is never repeated.
+
+Install the current app from `https://to-shreds.github.io/PlayLoc/downloads/CourtFlow-debug.apk`. The hosted HTML detects the versioned native bridge; older apps are prompted to update. A normal webpage cannot install another site's login cookies, so authenticated verification runs inside the Android app. Physical-device CAPTCHA acceptance still needs validation on the user's phone.
 
 `browser_service/server.js` retains an optional interactive verification display at `https://courtflow-browser-playlocal.onrender.com`. A signed, one-use ticket authorizes transfer of an already-authenticated session directly between the two Render services. The temporary PlayLocal page is rendered as authenticated JPEG responses. Cloudflare does not support automated browsers such as Puppeteer for production challenges, so this optional display is not a reliable replacement for the normal browser path. CourtFlow does not synthesize verification tokens.
 
 The current Chromium configuration uses one active verification at a time. A second request is rejected while another verification is open, rather than silently closing somebody else's page. Bookings are processed sequentially. The image is displayed only after it decodes successfully, startup status polls remain nonterminal, and the pre-booking form's "reservation receipt" text is not treated as success. Only the exact selected court's reservation form can be submitted. An uncertain submission is not automatically repeated; Activity reconciliation determines whether it booked.
 
-Paid reservations remain unsupported. The optional Android experiment is not required by the web workflow.
+Paid reservations remain unsupported. My calendar and court planning work in the normal browser. Automatic saved-account sign-in for on-device CAPTCHA uses the Android companion.
 
 ## Regression tests
 

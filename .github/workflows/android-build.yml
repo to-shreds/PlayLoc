@@ -2,15 +2,18 @@ name: Build CourtFlow Android
 
 on:
   push:
+    branches: [main]
     paths:
       - 'android/**'
-      - 'scripts/apply_android_native_bridge.py'
-      - 'scripts/apply_android_webview_compat.py'
       - '.github/workflows/android-build.yml'
   workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency:
+  group: courtflow-android-main
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -27,45 +30,73 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Wire hosted frontend to native booking bridge
-        run: python scripts/apply_android_native_bridge.py
+      # Never run source-rewriting patch scripts during APK builds.
+      - name: Check native reservation JavaScript
+        run: node --check android/app/src/main/assets/reservation.js
 
-      - name: Allow PlayLocal verification subframes
-        run: python scripts/apply_android_webview_compat.py
+      - name: Restore dedicated APK signing identity
+        id: signing-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: courtflow-android-signing-v2
 
-      - name: Check hosted frontend JavaScript
+      - name: Prepare stable APK signing identity
+        env:
+          COURTFLOW_ANDROID_KEYSTORE_BASE64: ${{ secrets.COURTFLOW_ANDROID_KEYSTORE_BASE64 }}
         run: |
-          python - <<'PY'
-          from pathlib import Path
-          import re
-          h=Path('index.html').read_text()
-          assert 'CourtFlowNative.startBooking' in h
-          assert 'courtflow-native-booking-complete' in h
-          m=re.search(r'<script>(.*)</script>',h,re.S)
-          Path('/tmp/courtflow.js').write_text(m.group(1))
-          java=Path('android/app/src/main/java/com/toshreds/courtflow/MainActivity.java').read_text()
-          assert 'if (!request.isForMainFrame()) return false;' in java
-          PY
-          node --check /tmp/courtflow.js
+          mkdir -p "$HOME/.android"
+          if [ -n "$COURTFLOW_ANDROID_KEYSTORE_BASE64" ]; then
+            printf '%s' "$COURTFLOW_ANDROID_KEYSTORE_BASE64" | base64 --decode > "$HOME/.android/debug.keystore"
+          elif [ ! -f "$HOME/.android/debug.keystore" ]; then
+            if [ -f downloads/CourtFlow-build.json ] && python -c "import json; assert json.load(open('downloads/CourtFlow-build.json'))['versionCode'] >= 2"; then
+              echo 'The saved signing key is unavailable. Restore COURTFLOW_ANDROID_KEYSTORE_BASE64 instead of changing the installed app signature.'
+              exit 1
+            fi
+            keytool -genkeypair -keystore "$HOME/.android/debug.keystore" -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=CourtFlow Android Development,O=CourtFlow,C=US'
+          fi
+          chmod 600 "$HOME/.android/debug.keystore"
 
-      - name: Build installable debug APK
+      - name: Preserve initial signing identity for subsequent builds
+        if: steps.signing-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: courtflow-android-signing-v2
+
+      - name: Build installable APK
         run: gradle -p android :app:assembleDebug --stacktrace
 
-      - name: Publish APK into GitHub Pages tree
+      - name: Prepare APK download and source metadata
+        env:
+          SOURCE_COMMIT: ${{ github.sha }}
         run: |
-          mkdir -p downloads
-          cp android/app/build/outputs/apk/debug/app-debug.apk downloads/CourtFlow-debug.apk
-          sha256sum downloads/CourtFlow-debug.apk | tee downloads/CourtFlow-debug.sha256
-
-      - name: Commit frontend bridge and APK
-        run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add index.html android/app/src/main/java/com/toshreds/courtflow/MainActivity.java downloads/CourtFlow-debug.apk downloads/CourtFlow-debug.sha256
-          git commit -m "Harden Android PlayLocal booking WebView"
-          git push
+          mkdir -p /tmp/courtflow-downloads
+          cp android/app/build/outputs/apk/debug/app-debug.apk /tmp/courtflow-downloads/CourtFlow-debug.apk
+          cd /tmp/courtflow-downloads
+          sha256sum CourtFlow-debug.apk > CourtFlow-debug.sha256
+          python - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+          Path('CourtFlow-build.json').write_text(json.dumps({'versionCode': 2, 'versionName': '0.2.0', 'sourceCommit': os.environ['SOURCE_COMMIT'], 'builtAt': datetime.now(timezone.utc).isoformat(), 'nativeApiVersion': 2}, indent=2) + '\n')
+          PY
 
       - uses: actions/upload-artifact@v4
         with:
           name: CourtFlow-debug-apk
-          path: downloads/CourtFlow-debug.apk
+          path: /tmp/courtflow-downloads/*
+
+      - name: Publish only APK downloads to latest main
+        run: |
+          git fetch origin main
+          git checkout -B courtflow-apk-publish origin/main
+          mkdir -p downloads
+          cp /tmp/courtflow-downloads/* downloads/
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add downloads/CourtFlow-debug.apk downloads/CourtFlow-debug.sha256 downloads/CourtFlow-build.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Publish CourtFlow Android 0.2 automatic session APK'
+          git pull --rebase origin main
+          git push origin HEAD:main
