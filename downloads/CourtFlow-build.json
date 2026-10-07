@@ -1,7 +1,9 @@
 {
   "versionCode": 2,
   "versionName": "0.2.0",
-  "sourceCommit": "0585a8e526bfcb6e2633950abf173d1337affed9",
-  "builtAt": "2026-10-07T05:36:19.574128+00:00",
-  "nativeApiVersion": 2
+  "sourceCommit": "67cce5ca9fe968c7cd39489845d3048aaedcce9c",
+  "builtAt": "2026-10-07T05:47:46.491678+00:00",
+  "nativeApiVersion": 2,
+  "signerCertificateSha256": "f54cb146e6e429fcde86a10f453718159cff7696f64e1c416d1b8a6a4f8e61cb",
+  "keystoreCertificateSha256": "f54cb146e6e429fcde86a10f453718159cff7696f64e1c416d1b8a6a4f8e61cb"
 }
