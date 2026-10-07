@@ -233,7 +233,7 @@ async function nativeHandoff(row,authenticationRetry=false){
     nativeBookingNotice(row,'Opening PlayLocal already signed in. Complete only the verification when it appears.');
     window.CourtFlowNative.startBooking(JSON.stringify({ticket:ticket.ticket,requestId}));
   }catch(e){state.nativeRequest=null;nativeBookingNotice(row,'Automatic sign-in could not start: '+e.message,true);log('Automatic PlayLocal sign-in: '+e.message)}
-  finally{state.nativeOpening=false;renderPlan()}
+  finally{state.nativeOpening=false;renderPlan();const next=state.pendingVerification?.row;if(next&&next!==row&&!state.nativeRequest)queueMicrotask(()=>nativeHandoff(next))}
 }
 window.addEventListener('courtflow-native-booking-state',async e=>{
   const current=state.nativeRequest,d=e.detail||{};
@@ -275,13 +275,13 @@ function verificationPaused(){
 async function closeRemoteBrowser(quiet=false,keepModal=false){
   ++browserGeneration;
   if(state.browserPoll){clearTimeout(state.browserPoll);state.browserPoll=null}
-  const rb=state.remoteBrowser;state.remoteBrowser=null;
+  const rb=state.remoteBrowser,closingRow=state.pendingVerification?.row;state.remoteBrowser=null;
   if(!keepModal){$('browserModal').classList.add('hidden');document.body.style.overflow=''}
   else{$('browserModal').classList.remove('hidden');document.body.style.overflow='hidden';$('browserFrame').classList.add('hidden');$('browserLoading').classList.remove('hidden');$('browserRetry').classList.add('hidden')}
   if(rb?.objectUrl)URL.revokeObjectURL(rb.objectUrl);
   let closeInfo=null;
   if(rb?.id&&rb?.key){try{const response=await browserRequest(`/session/${encodeURIComponent(rb.id)}`,{method:'DELETE'},rb);const data=await response.json();closeInfo=response.ok&&typeof data.submissionAttempted==='boolean'?data:{unknown:true}}catch{closeInfo={unknown:true}}}
-  if(rb&&state.pendingVerification&&(closeInfo?.unknown||((closeInfo?.submissionAttempted??rb.submissionAttempted)&&!(closeInfo?.submissionRejected??rb.submissionRejected))))state.pendingVerification.row.nativeUncertain=true;
+  if(rb&&closingRow&&(closeInfo?.unknown||((closeInfo?.submissionAttempted??rb.submissionAttempted)&&!(closeInfo?.submissionRejected??rb.submissionRejected))))closingRow.nativeUncertain=true;
   if(!quiet&&!keepModal)verificationPaused();
   return closeInfo;
 }

@@ -32,6 +32,7 @@ import org.json.JSONObject;
 import org.json.JSONTokener;
 
 import java.io.ByteArrayOutputStream;
+import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -272,7 +273,7 @@ public class MainActivity extends Activity {
             if (!mainFrame || !live(booking) || !playLocal(view.getUrl())) return;
             try {
                 JSONObject data = new JSONObject(message.getData());
-                if (booking.requestId.equals(data.optString("requestId")) && "submitting".equals(data.optString("status"))) markSubmitted(booking);
+                if (booking.requestId.equals(data.optString("requestId")) && "submitting".equals(data.optString("status"))) { booking.prepared = true; markSubmitted(booking); }
             } catch (Exception ignored) { }
         });
         if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
@@ -298,6 +299,10 @@ public class MainActivity extends Activity {
         }
         @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
             if (request.isForMainFrame() && "POST".equals(request.getMethod()) && formDestination(booking, request.getUrl().toString())) {
+                synchronized (booking) {
+                    if (booking.closed || !booking.prepared || booking.postObserved) return new WebResourceResponse("text/plain", "UTF-8", 409, "Conflict", Collections.emptyMap(), new ByteArrayInputStream("CourtFlow stopped an unprepared or duplicate reservation submission. Check Activity before retrying.".getBytes(StandardCharsets.UTF_8)));
+                    booking.postObserved = true;
+                }
                 runOnUiThread(() -> { if (live(booking)) markSubmitted(booking); });
             }
             return null;
@@ -370,6 +375,7 @@ public class MainActivity extends Activity {
                     Object decoded = new JSONTokener(value).nextValue();
                     JSONObject result = new JSONObject((String) decoded);
                     String status = result.optString("status"), message = result.optString("message");
+                    if (result.optBoolean("prepared")) booking.prepared = true;
                     setStatus(booking, message);
                     if ("failed".equals(status)) { closeBooking(booking, "failed", message, true); return; }
                     if ("submitted".equals(status)) markSubmitted(booking);
@@ -427,7 +433,8 @@ public class MainActivity extends Activity {
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
     private static final class Booking {
         final String requestId; final long generation;
-        boolean closed, submissionAttempted, inspecting;
+        volatile boolean closed, submissionAttempted, prepared;
+        boolean inspecting, postObserved;
         long submittedAt, pageGeneration;
         JSONObject slot; String url;
         Dialog dialog; WebView view; TextView status;

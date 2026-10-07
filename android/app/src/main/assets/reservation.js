@@ -105,10 +105,10 @@
     const errors = [...document.querySelectorAll('[role=alert],.alert-danger,#error_explanation,.validation-error')].some(el => String(el.innerText || '').trim());
     if (errors) return info('failed', 'PlayLocal rejected the reservation form. Check Activity before retrying.');
     const submit = form.querySelector('button[type=submit],input[type=submit]');
-    if (!challengeReady(form)) return info('waiting', 'Court ' + String(slot.courtName || slot.courtId).replace(/^.*?([123])$/, '$1') + ' selected. Complete PlayLocal verification.');
-    if (!form.checkValidity()) return info('waiting', 'Complete the required fields on the reservation form.');
-    if (!submit || submit.disabled || submit.getAttribute('aria-disabled') === 'true' || Date.now() - guard.stableAt < 900) return info('waiting', 'Waiting for the reservation form.');
-    return info('ready', 'Verification complete. Submitting the requested reservation once.');
+    if (!challengeReady(form)) return info('waiting', 'Court ' + String(slot.courtName || slot.courtId).replace(/^.*?([123])$/, '$1') + ' selected. Complete PlayLocal verification.', { prepared: true });
+    if (!form.checkValidity()) return info('waiting', 'Complete the required fields on the reservation form.', { prepared: true });
+    if (!submit || submit.disabled || submit.getAttribute('aria-disabled') === 'true' || Date.now() - guard.stableAt < 900) return info('waiting', 'Waiting for the reservation form.', { prepared: true });
+    return info('ready', 'Verification complete. Submitting the requested reservation once.', { prepared: true });
   }
   function submit(request) {
     const state = inspect(Object.assign({}, request, { submissionAttempted: false }));
