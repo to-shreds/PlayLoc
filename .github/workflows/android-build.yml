@@ -91,10 +91,10 @@ jobs:
           expected = hashlib.sha256(Path('/tmp/courtflow-signing-cert.der').read_bytes()).hexdigest()
           certificate_output = Path('/tmp/courtflow-apk-certs.txt').read_text()
           print('APK public certificate report:\n' + certificate_output, flush=True)
-          reported = [match.group(1).lower() for line in certificate_output.splitlines() if (match := re.fullmatch(r'Signer #\d+ certificate SHA-256 digest: ([0-9a-fA-F]{64})', line.strip()))]
+          reported = [match.group(1).lower() for line in certificate_output.splitlines() if (match := re.fullmatch(r'(?:Signer #\d+|V[23](?:\.\d+)? Signer:) certificate SHA-256 digest: ([0-9a-fA-F]{64})', line.strip()))]
           print('Preserved keystore certificate SHA-256: ' + expected, flush=True)
           print('Parsed APK certificate SHA-256: ' + json.dumps(reported), flush=True)
-          assert reported == [expected], 'APK signer differs from the preserved CourtFlow keystore'
+          assert reported and set(reported) == {expected}, 'APK signer differs from the preserved CourtFlow keystore'
           prior_path = Path('downloads/CourtFlow-build.json')
           prior = json.loads(prior_path.read_text()) if prior_path.exists() else {}
           assert not prior.get('signerCertificateSha256') or prior['signerCertificateSha256'] == expected, 'APK signing identity changed from the published app'
