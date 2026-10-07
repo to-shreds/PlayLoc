@@ -38,6 +38,13 @@ jobs:
         id: signing-cache
         uses: actions/cache/restore@v4
         with:
+          path: ~/.courtflow-signing/courtflow-debug.keystore
+          key: courtflow-android-signing-v3
+
+      - name: Restore previous CourtFlow key for one-time signing-path migration
+        if: steps.signing-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/restore@v4
+        with:
           path: ~/.android/debug.keystore
           key: courtflow-android-signing-v2
 
@@ -45,27 +52,51 @@ jobs:
         env:
           COURTFLOW_ANDROID_KEYSTORE_BASE64: ${{ secrets.COURTFLOW_ANDROID_KEYSTORE_BASE64 }}
         run: |
-          mkdir -p "$HOME/.android"
+          mkdir -p "$HOME/.courtflow-signing"
+          courtflow_keystore_path="$HOME/.courtflow-signing/courtflow-debug.keystore"
           if [ -n "$COURTFLOW_ANDROID_KEYSTORE_BASE64" ]; then
-            printf '%s' "$COURTFLOW_ANDROID_KEYSTORE_BASE64" | base64 --decode > "$HOME/.android/debug.keystore"
-          elif [ ! -f "$HOME/.android/debug.keystore" ]; then
+            printf '%s' "$COURTFLOW_ANDROID_KEYSTORE_BASE64" | base64 --decode > "$courtflow_keystore_path"
+          elif [ ! -f "$courtflow_keystore_path" ] && [ -f "$HOME/.android/debug.keystore" ]; then
+            cp "$HOME/.android/debug.keystore" "$courtflow_keystore_path"
+          elif [ ! -f "$courtflow_keystore_path" ]; then
             if [ -f downloads/CourtFlow-build.json ] && python -c "import json; assert json.load(open('downloads/CourtFlow-build.json'))['versionCode'] >= 2"; then
               echo 'The saved signing key is unavailable. Restore COURTFLOW_ANDROID_KEYSTORE_BASE64 instead of changing the installed app signature.'
               exit 1
             fi
-            keytool -genkeypair -keystore "$HOME/.android/debug.keystore" -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=CourtFlow Android Development,O=CourtFlow,C=US'
+            keytool -genkeypair -keystore "$courtflow_keystore_path" -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=CourtFlow Android Development,O=CourtFlow,C=US'
           fi
-          chmod 600 "$HOME/.android/debug.keystore"
+          chmod 600 "$courtflow_keystore_path"
+          echo "COURTFLOW_ANDROID_KEYSTORE_PATH=$courtflow_keystore_path" >> "$GITHUB_ENV"
 
       - name: Preserve initial signing identity for subsequent builds
         if: steps.signing-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
-          path: ~/.android/debug.keystore
-          key: courtflow-android-signing-v2
+          path: ~/.courtflow-signing/courtflow-debug.keystore
+          key: courtflow-android-signing-v3
 
       - name: Build installable APK
         run: gradle -p android :app:assembleDebug --stacktrace
+
+      - name: Verify APK uses the preserved signing certificate
+        run: |
+          keytool -exportcert -keystore "$COURTFLOW_ANDROID_KEYSTORE_PATH" -storepass android -alias androiddebugkey -file /tmp/courtflow-signing-cert.der
+          courtflow_apksigner=$(python -c "import glob,os; print(sorted(glob.glob(os.environ['ANDROID_HOME'] + '/build-tools/*/apksigner'))[-1])")
+          "$courtflow_apksigner" verify --print-certs android/app/build/outputs/apk/debug/app-debug.apk > /tmp/courtflow-apk-certs.txt
+          python - <<'PY'
+          import hashlib, json, os, re
+          from pathlib import Path
+          expected = hashlib.sha256(Path('/tmp/courtflow-signing-cert.der').read_bytes()).hexdigest()
+          reported = re.findall(r'^Signer #\d+ certificate SHA-256 digest: ([0-9a-fA-F]+)$', Path('/tmp/courtflow-apk-certs.txt').read_text(), re.M)
+          assert [x.lower() for x in reported] == [expected], 'APK signer differs from the preserved CourtFlow keystore'
+          prior_path = Path('downloads/CourtFlow-build.json')
+          prior = json.loads(prior_path.read_text()) if prior_path.exists() else {}
+          assert not prior.get('signerCertificateSha256') or prior['signerCertificateSha256'] == expected, 'APK signing identity changed from the published app'
+          with open(os.environ['GITHUB_ENV'], 'a') as output:
+              output.write('COURTFLOW_ANDROID_KEYSTORE_CERT_SHA256=' + expected + '\n')
+              output.write('COURTFLOW_ANDROID_SIGNER_SHA256=' + reported[0].lower() + '\n')
+          print('Verified APK signer SHA-256: ' + expected)
+          PY
 
       - name: Prepare APK download and source metadata
         env:
@@ -79,7 +110,7 @@ jobs:
           import json, os
           from datetime import datetime, timezone
           from pathlib import Path
-          Path('CourtFlow-build.json').write_text(json.dumps({'versionCode': 2, 'versionName': '0.2.0', 'sourceCommit': os.environ['SOURCE_COMMIT'], 'builtAt': datetime.now(timezone.utc).isoformat(), 'nativeApiVersion': 2}, indent=2) + '\n')
+          Path('CourtFlow-build.json').write_text(json.dumps({'versionCode': 2, 'versionName': '0.2.0', 'sourceCommit': os.environ['SOURCE_COMMIT'], 'builtAt': datetime.now(timezone.utc).isoformat(), 'nativeApiVersion': 2, 'signerCertificateSha256': os.environ['COURTFLOW_ANDROID_SIGNER_SHA256'], 'keystoreCertificateSha256': os.environ['COURTFLOW_ANDROID_KEYSTORE_CERT_SHA256']}, indent=2) + '\n')
           PY
 
       - uses: actions/upload-artifact@v4
