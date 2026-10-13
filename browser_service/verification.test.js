@@ -246,7 +246,7 @@ test('full verification lifecycle regression suite', { timeout: 180000 }, async 
     await ui.evaluate(slot => {
       hideSiteGate(); applyServerVault([{ id: 'fixture', name: 'Fixture' }]);
       const row = { start: 420, slot, status: 'verification', account: state.accounts[0] };
-      state.plan = [row]; state.pendingVerification = { row }; renderPlan(); startRemoteBrowser(row);
+      state.plan = [row]; state.pendingVerification = { row }; renderPlan(); verificationHelp(row, '');
     }, slot);
     await ui.waitForFunction(() => !document.getElementById('browserModal').classList.contains('hidden'));
     assert.equal(await ui.$eval('#bookPlan', el => getComputedStyle(el).display), 'none');
@@ -257,110 +257,82 @@ test('full verification lifecycle regression suite', { timeout: 180000 }, async 
     await ui.screenshot({ path: path.join(__dirname, 'test-output', 'mobile-verification-fixture.png') });
     await ui.evaluate(() => closeRemoteBrowser(true)); await ui.close();
   });
-  await t.test('native automatic sign-in sends only a ticket, rejects stale callbacks and confirms Activity before advancing', async () => {
-    const browser = await runtime.getBrowser(), ui = await browser.newPage();
+  await t.test('HTML booking uses saved accounts in-page, confirms Activity, and never offers an APK', async () => {
+    const ui = await (await runtime.getBrowser()).newPage();
     const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
-    const calls = { remoteStarts: 0, remoteDeletes: 0, bookings: [], verifications: [], nativeTickets: [], authentications: 0 };
-    let confirmed = false;
+    assert.doesNotMatch(html, /CourtFlowNative|\.apk|Install CourtFlow|Update CourtFlow/);
+    const calls = { starts: 0, bookings: [], tickets: [], authentications: [], verifications: [] };
+    let confirmed = false, attemptedOnClose = false;
+    const headers = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET,POST,DELETE,OPTIONS',
+      'access-control-allow-headers': 'content-type,x-courtflow-session' };
     await ui.setRequestInterception(true);
     ui.on('request', async req => {
       try {
         const u = new URL(req.url());
-        if (req.method() === 'OPTIONS') return req.respond({ status: 204, headers: {
-          'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET,POST,DELETE,OPTIONS',
-          'access-control-allow-headers': 'content-type,x-courtflow-session' } });
+        const respond = (body, status = 200) => req.respond({ status, contentType: 'application/json', headers, body: JSON.stringify(body) });
+        if (req.method() === 'OPTIONS') return req.respond({ status: 204, headers });
         if (u.hostname === 'to-shreds.github.io') return req.respond({ status: 200, contentType: 'text/html', body: html });
         if (u.hostname === 'courtflow-playlocal.onrender.com') {
           const body = JSON.parse(req.postData() || '{}'); let data;
           if (body.action === 'capabilities') data = { vendor: 'playlocal', siteAuthRequired: true };
-          else if (body.action === 'authenticate') { calls.authentications++; data = { sessionToken: 'fixture-login' }; }
-          else if (body.action === 'native_ticket') { calls.nativeTickets.push(body); data = { ticket: 'signed-fixture-ticket' }; }
-          else if (body.action === 'verify_booking') {
-            calls.verifications.push(body);
-            data = { confirmed };
-          } else if (body.action === 'book') {
+          else if (body.action === 'authenticate') { calls.authentications.push(body); data = { sessionToken: 'fixture-login' }; }
+          else if (body.action === 'browser_ticket') { calls.tickets.push(body); data = { ticket: 'signed-html-fixture-ticket' }; }
+          else if (body.action === 'verify_booking') { calls.verifications.push(body); data = { confirmed }; }
+          else if (body.action === 'book') {
             calls.bookings.push(body);
-            return req.respond({ status: 409, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' },
-              body: JSON.stringify({ ok: false, error: { code: 'VERIFICATION_REQUIRED', message: 'Local fixture verification',
-                definitive: true, data: { reservationUrl: body.slot.reservationUrl } } }) });
+            return respond({ ok: false, error: { code: 'VERIFICATION_REQUIRED', message: 'Local fixture verification',
+              definitive: true, data: { reservationUrl: body.slot.reservationUrl } } }, 409);
           } else data = { reservations: [] };
-          return req.respond({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' },
-            body: JSON.stringify({ ok: true, data }) });
+          return respond({ ok: true, data });
         }
         if (u.hostname === 'courtflow-browser-playlocal.onrender.com') {
-          if (u.pathname === '/session/start') calls.remoteStarts++;
-          if (req.method() === 'DELETE') calls.remoteDeletes++;
-          return req.respond({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' },
-            body: JSON.stringify({ ok: true }) });
+          if (u.pathname === '/session/start') {
+            calls.starts++;
+            assert.deepEqual(JSON.parse(req.postData()), { ticket: 'signed-html-fixture-ticket' });
+            return respond({ ok: true, sessionId: 'html-' + calls.starts, sessionKey: 'fixture-key', viewport: runtime.VIEWPORT });
+          }
+          if (req.method() === 'DELETE') return respond({ ok: true, submissionAttempted: attemptedOnClose, submissionRejected: false });
+          return respond({ ok: true, state: 'verification', frameReady: false, submissionAttempted: false, statusText: 'Complete verification in this page.' });
         }
         if (u.protocol === 'data:' || u.protocol === 'blob:') return req.continue();
         return req.abort();
-      } catch (err) { console.error('Native fixture request failed:', err.message); try { await req.abort(); } catch {} }
+      } catch (err) { console.error('HTML fixture request failed:', err.message); try { await req.abort(); } catch {} }
     });
     try {
       await ui.goto('https://to-shreds.github.io/PlayLoc/'); await delay(100);
-      const firstSlot = { ...slot, reservationUrl: 'https://www.playlocal.com/facilities/22/reservations/new?date=2026-09-25&time=7am' };
-      const nextSlot = { ...slot, start: 480, end: 540,
-        reservationUrl: 'https://www.playlocal.com/facilities/22/reservations/new?date=2026-09-25&time=8am' };
+      const slots = [slot, { ...slot, start: 480, end: 540 }].map(s => ({ ...s,
+        reservationUrl: 'https://www.playlocal.com/facilities/22/reservations/new?date=' + s.date + '&time=' + (s.start === 420 ? '7am' : '8am') }));
       await ui.evaluate(async slots => {
         hideSiteGate(); applyServerVault([{ id: 'fixture', name: 'Fixture' }]);
-        const rows = slots.map((s, i) => ({ start: s.start, slot: s, status: i ? 'planned' : 'verification', account: state.accounts[0] }));
-        state.plan = rows; state.bookingQueue = rows; state.bookingCursor = 0;
-        state.pendingVerification = { row: rows[0], url: rows[0].slot.reservationUrl };
-        await nativeHandoff(rows[0]);
-      }, [firstSlot, nextSlot]);
-      assert.equal(await ui.$('#nativeOpen'), null);
-      assert.match(await ui.$eval('#bookingHelp', el => el.innerText), /Install CourtFlow for Android/);
-      assert.doesNotMatch(await ui.$eval('#bookingHelp', el => el.innerText), /sign in to PlayLocal using|email|password/i);
-      assert.equal(calls.nativeTickets.length, 0);
-      await ui.evaluate(async () => {
-        window.nativeStarts=[];
-        window.CourtFlowNative={apiVersion:()=>2,startBooking:raw=>nativeStarts.push(JSON.parse(raw)),closeBooking:()=>{}};
-        await nativeHandoff(state.pendingVerification.row);
-      });
-      assert.deepEqual(await ui.evaluate(() => Object.keys(nativeStarts[0]).sort()), ['requestId','ticket']);
-      assert.equal(await ui.evaluate(() => nativeStarts[0].ticket), 'signed-fixture-ticket');
-      assert.equal(calls.nativeTickets[0].accountId, 'fixture');
-      assert.equal(calls.nativeTickets[0].slot.courtId, '54');
-      assert.equal(calls.remoteStarts, 0);
-      assert.equal(calls.bookings.length, 0);
-      assert.equal(await ui.$('#useRemoteVerification'),null,'Active native flow cannot switch modes');
-      await ui.evaluate(async()=>startRemoteBrowser(state.pendingVerification.row));
-      assert.equal(calls.remoteStarts,0,'Direct remote start is guarded during native verification');
-      await ui.evaluate(() => window.dispatchEvent(new CustomEvent('courtflow-native-booking-complete',{detail:{requestId:'stale'}})));
-      await delay(50);
-      assert.equal(calls.verifications.length, 0);
-      await ui.evaluate(() => window.dispatchEvent(new CustomEvent('courtflow-native-booking-state',{detail:{requestId:state.nativeRequest.requestId,status:'authentication-rejected'}})));
-      await ui.waitForFunction(() => nativeStarts.length===2);
-      assert.equal(calls.authentications, 2, 'Rejected transfer refreshes the saved account automatically');
-      await ui.evaluate(() => window.dispatchEvent(new CustomEvent('courtflow-native-booking-state',{detail:{requestId:state.nativeRequest.requestId,status:'authentication-rejected'}})));
-      await ui.waitForSelector('#retryNative');
-      assert.equal(await ui.evaluate(() => nativeStarts.length), 2, 'Authentication refresh is bounded');
-      await ui.click('#retryNative');
-      await ui.waitForFunction(() => nativeStarts.length===3);
-      await ui.evaluate(() => window.dispatchEvent(new CustomEvent('courtflow-native-booking-state',{detail:{requestId:state.nativeRequest.requestId,status:'submitted',submissionAttempted:true,message:'Submitted'}})));
-      await ui.click('#checkPending');
-      await ui.waitForFunction(() => !document.getElementById('checkPending').disabled
-        && /not confirmed/i.test(document.getElementById('nativeCheckStatus').innerText), { timeout: 10000 });
-      assert.equal(calls.verifications.length, 4);
-      assert.equal(calls.bookings.length, 0);
+        state.plan = slots.map(slot => ({ start: slot.start, slot, status: 'planned', account: state.accounts[0] }));
+        state.bookingQueue = state.plan; state.bookingCursor = 0;
+        await continuePlanBooking();
+      }, slots);
+      await ui.waitForFunction(() => !!state.remoteBrowser);
+      assert.equal(calls.starts, 1);
+      assert.equal(calls.authentications.length, 1);
+      assert.equal(calls.authentications[0].accountId, 'fixture');
+      assert.equal('username' in calls.authentications[0], false);
+      assert.equal('password' in calls.authentications[0], false);
+      assert.equal(calls.tickets[0].slot.courtId, '54');
+      assert.equal(await ui.$('#browserNative'), null);
+      assert.equal(await ui.$eval('#browserModal', el => getComputedStyle(el).display), 'flex');
       assert.equal(await ui.evaluate(() => state.bookingCursor), 0);
-      calls.verifications.length=0;confirmed=true;
-      await ui.evaluate(() => window.dispatchEvent(new CustomEvent('courtflow-native-booking-complete',{detail:{requestId:state.nativeRequest.requestId,submissionAttempted:true}})));
-      await ui.waitForFunction(() => state.bookingCursor===1 && nativeStarts.length===4, {timeout:10000});
-      assert.equal(calls.verifications.length, 1);
-      assert.equal(calls.verifications[0].slot.start, 420);
-      assert.equal(calls.bookings.length, 1);
-      assert.equal(calls.bookings[0].slot.start, 480);
-      assert.equal(calls.nativeTickets[3].slot.start, 480);
-      assert.deepEqual(await ui.evaluate(() => ({first:state.plan[0].status,next:state.plan[1].status})),{first:'booked',next:'verification'});
-      confirmed=false;
-      await ui.evaluate(() => window.dispatchEvent(new CustomEvent('courtflow-native-booking-state',{detail:{requestId:state.nativeRequest.requestId,status:'closed',submissionAttempted:true}})));
-      await ui.waitForFunction(() => !state.nativeRequest);
-      await ui.evaluate(async () => nativeHandoff(state.pendingVerification.row));
-      assert.equal(await ui.$('#retryNative'), null, 'Uncertain prior submission cannot trigger another native booking');
-      assert.match(await ui.$eval('#bookingHelp',el=>el.innerText), /Do not submit again/);
-      assert.equal(calls.nativeTickets.length, 4);
+      confirmed = true;
+      await ui.evaluate(() => checkPendingBooking(true));
+      await ui.waitForFunction(() => state.bookingCursor === 1 && !!state.remoteBrowser);
+      assert.equal(calls.starts, 2);
+      assert.equal(calls.bookings.length, 2);
+      assert.equal(calls.tickets[1].slot.start, 480);
+      assert.equal(await ui.evaluate(() => state.plan[0].status), 'booked');
+      confirmed = false; attemptedOnClose = true;
+      await ui.evaluate(() => closeRemoteBrowser());
+      await ui.click('#resumeVerification');
+      await ui.waitForSelector('#checkPending');
+      assert.equal(calls.starts, 2, 'An uncertain submitted booking cannot create another session');
+      assert.equal(await ui.$('#resumePageVerification'), null);
+      assert.match(await ui.$eval('#bookingHelp', el => el.innerText), /Do not submit again/);
+      assert.equal(await ui.evaluate(() => state.bookingCursor), 1);
     } finally {
       await ui.evaluate(() => closeRemoteBrowser(true));
       await ui.close();
